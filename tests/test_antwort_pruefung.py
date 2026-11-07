@@ -73,9 +73,15 @@ def test_answer_with_unsupported_sentence_is_refused(tmp_path: Path) -> None:
     assert antwort.grund in {"keine belegte Passage", "Antwort nicht durch die Auszüge gedeckt"}
 
 
-def test_answer_without_citation_is_refused(tmp_path: Path) -> None:
+def test_answer_without_citation_is_allowed_when_a_passage_carries_it(tmp_path: Path) -> None:
+    # A summary sentence without a citation is fine as long as an admitted passage
+    # supports it; only unsupported sentences make the answer unusable.
     pipeline = _pipeline(tmp_path, "Die Miete betraegt 940 Euro.", p_ja=0.9)
     antwort = pipeline.ask("Wie hoch ist die Miete?")
+    assert antwort.text is not None
+
+
+def test_answer_with_unsupported_sentence_is_refused_though_cited(tmp_path: Path) -> None:
+    pipeline = _pipeline(tmp_path, "Die Miete betraegt 1.400 Euro [a.txt, S. 1].", p_ja=0.1)
+    antwort = pipeline.ask("Wie hoch ist die Miete?")
     assert antwort.text is None
-    assert antwort.grund == "Antwort nicht durch die Auszüge gedeckt"
-    assert antwort.warnungen[0].startswith("Unbelegte Aussage")

@@ -218,6 +218,56 @@ die Zielseiten, nicht ob die Antwort vollständig ist).
 belegten Nutzen. Wer vollständigere Antworten will, muss das mit einem Goldset
 messen, das Vollständigkeit bewertet, nicht nur die Quelle.
 
+## H — Ziel: null Halluzinationen
+
+Das Ziel ist nicht „selten falsch", sondern **keine falsche Antwort**. Damit reicht das
+Gate nicht: es entscheidet nur, welche Passage als Beleg zugelassen wird. Was das
+Antwortmodell daraus schreibt, ist eine zweite Fehlerquelle. Deshalb wird jetzt jeder
+Satz der Antwort gegen die Passage geprüft, die er nennt (`antwort_pruefung`, Logprobs,
+wie das Gate). Trägt keine zugelassene Passage den Satz, wird die Antwort nicht
+ausgeliefert.
+
+### Kalibrierung des Gates auf 1000 beschrifteten Fällen
+
+`deutsche-telekom/Ger-RAG-eval`, Task 4 (`context_question_match`), 500 ja / 500 nein,
+CC-BY-SA-4.0. `scripts/calibrate_gate_ger_rag_eval.py`.
+
+| Schwelle | „ja" erkannt | „nein" abgelehnt | Genauigkeit |
+|---|---|---|---|
+| 0,30 | 490/500 | 497/500 | 98,7 % |
+| 0,50 | 489/500 | 497/500 | 98,6 % |
+| 0,90 | 479/500 | 497/500 | 97,6 % |
+
+Wichtig: bei **467 von 1000** Fällen begann das Modell nicht mit „ja"/„nein" — fast
+immer bei den Negativfällen langer Wikipedia-Absätze. Diese Fälle zählen als
+Ablehnung. Ohne diese Regel wäre die Trefferquote geschönt; mit ihr ist sie
+konservativ. Das Gate allein lässt 3 von 500 negativen Fällen durch — für „gleich
+null" zu viel.
+
+### Kette auf dem eigenen Goldset (23 beantwortbare Fragen)
+
+| Prüfung der Antwort | Antworten | Beleg ok | **falsch** |
+|---|---|---|---|
+| keine | 21 | 15 | **6** |
+| Satzprüfung, Schwelle 0,3 | 10 | 9 | **1** |
+| Satzprüfung, Schwelle 0,5 | 8 | 8 | **0** |
+| Satzprüfung 0,5 + Nachbesserung | 15 | 12 | **3** |
+
+**Null ist erreichbar — zum Preis von 13 der 21 Antworten.** Jede Lockerung bringt
+Falschantworten zurück: Schwelle 0,3 eine, die Nachbesserung drei. Die Nachbesserung
+hebt die Abdeckung von 8 auf 15, aber der Text, den sie erzeugt, geht über das
+Geprüfte hinaus.
+
+Eingestellt ist die strenge Fassung: `antwort_pruefung: true`, `antwort_schwelle: 0.5`,
+`antwort_reparatur: false`.
+
+**Was diese Null nicht beweist.** Acht Antworten ohne Fehler sind kein Beweis, dass
+der Fehler nie auftritt. Die Kalibrierung zeigt für das Gate 3 Fehlzulassungen auf 500
+negative Fälle; für die Satzprüfung fehlt eine beschriftete Menge. Der nächste Schritt
+wäre, aus Task 4 eine solche Menge zu bauen (Sätze aus beantwortbaren Kontexten als
+„gestützt", Sätze aus fremden Artikeln als „nicht gestützt") und die Fehlakzeptanz der
+Satzprüfung zu messen. Erst dann ist „null" eine belegte Zahl und keine Stichprobe.
+
 ## Endstand der Kette
 
 | Stufe | Recall@10 | nDCG@10 | Beleg ok (von 23) |

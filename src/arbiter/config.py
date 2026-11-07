@@ -56,6 +56,7 @@ class Rag:
     antwort_passagen: int = 3
     antwort_pruefung: bool = False
     antwort_schwelle: float = 0.5
+    antwort_reparatur: bool = False
 
 
 @dataclass(frozen=True)
@@ -97,6 +98,7 @@ _RAG_KEYS = {
     "antwort_passagen",
     "antwort_pruefung",
     "antwort_schwelle",
+    "antwort_reparatur",
 }
 _REQUIRED_BACKENDS = {
     "base_url",
@@ -209,6 +211,7 @@ def _rag(name: str, entry: Any, filename: str) -> Rag:
         antwort_passagen=int(entry.get("antwort_passagen", 3)),
         antwort_pruefung=bool(entry.get("antwort_pruefung", False)),
         antwort_schwelle=float(entry.get("antwort_schwelle", 0.5)),
+        antwort_reparatur=bool(entry.get("antwort_reparatur", False)),
     )
 
 

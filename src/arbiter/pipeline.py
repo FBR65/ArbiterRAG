@@ -14,7 +14,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from arbiter.answer import Quelle, build_answer_prompt
-from arbiter.check import build_claim_prompt, split_claims
+from arbiter.check import build_claim_prompt, build_repair_prompt, split_claims
 from arbiter.chunk import chunk_text
 from arbiter.config import Config, Rag
 from arbiter.decision import (
@@ -374,6 +374,11 @@ class Pipeline:
 
         if self.rag.antwort_pruefung:
             offen = self._unbelegte_aussagen(text, quellen)
+            if offen and self.rag.antwort_reparatur:
+                repariert = self._repariere_antwort(text, quellen)
+                if repariert:
+                    text = repariert
+                    offen = self._unbelegte_aussagen(text, quellen)
             if offen:
                 return Antwort(
                     text=None,
@@ -398,35 +403,58 @@ class Pipeline:
         )
 
     def _unbelegte_aussagen(self, text: str, quellen: list[Quelle]) -> list[str]:
-        """Claims that the passage they cite does not contain (spec: no hallucinations).
+        """Claims that no admitted passage supports (spec: no hallucinations).
 
-        Every sentence is checked against its own source. A sentence without a
-        citation counts as unsupported: an answer must be able to name where each
-        statement comes from.
+        A sentence that names a source is checked against that source. A sentence
+        without a citation is checked against every admitted passage — it may be a
+        summary of what the others say. Only a sentence that no passage supports
+        makes the answer unusable.
         """
         nach_quelle = {(quelle.quelle, quelle.seite): quelle.text for quelle in quellen}
+        alle = [quelle.text for quelle in quellen]
         offen: list[str] = []
         for satz, quelle, seite in split_claims(text):
             if quelle is None or seite is None:
+                kandidaten = alle
+            else:
+                kandidaten = [
+                    auszug
+                    for (datei, nummer), auszug in nach_quelle.items()
+                    if quelle in datei and nummer == seite
+                ]
+                if not kandidaten:
+                    offen.append(satz)
+                    continue
+            if not self._irgendeine_stuetzt(satz, kandidaten):
                 offen.append(satz)
-                continue
-            passende = [
-                auszug
-                for (datei, nummer), auszug in nach_quelle.items()
-                if quelle in datei and nummer == seite
-            ]
-            if not passende:
-                offen.append(satz)
-                continue
-            system, user = build_claim_prompt(satz, passende[0])
+        return offen
+
+    def _repariere_antwort(self, text: str, quellen: list[Quelle]) -> str | None:
+        """One rewrite attempt: keep only what the passages state. Then re-check."""
+        system, user = build_repair_prompt(
+            [
+                (quelle.quelle, quelle.seite, quelle.text)
+                for quelle in quellen
+                if quelle.seite is not None
+            ],
+            text,
+        )
+        try:
+            return self._answer_text(system, user).strip() or None
+        except Exception:
+            return None
+
+    def _irgendeine_stuetzt(self, satz: str, kandidaten: list[str]) -> bool:
+        """True as soon as one passage carries the sentence."""
+        for auszug in kandidaten:
+            system, user = build_claim_prompt(satz, auszug)
             try:
                 p = ja_wahrscheinlichkeit(self._logprobs(system, user))
             except Exception:
-                offen.append(satz)
                 continue
-            if p is None or p < self.rag.antwort_schwelle:
-                offen.append(satz)
-        return offen
+            if p is not None and p >= self.rag.antwort_schwelle:
+                return True
+        return False
 
     def _answer_text(self, system: str, user: str) -> str:
         if self.answerer is None:

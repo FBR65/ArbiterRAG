@@ -14,6 +14,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from arbiter.answer import Quelle, build_answer_prompt
+from arbiter.check import build_claim_prompt, split_claims
 from arbiter.chunk import chunk_text
 from arbiter.config import Config, Rag
 from arbiter.decision import (
@@ -371,6 +372,22 @@ class Pipeline:
                 warnungen=entscheidung.warnungen,
             )
 
+        if self.rag.antwort_pruefung:
+            offen = self._unbelegte_aussagen(text, quellen)
+            if offen:
+                return Antwort(
+                    text=None,
+                    grund="Antwort nicht durch die Auszüge gedeckt",
+                    quellen=quellen,
+                    entscheidung=entscheidung,
+                    fehler=False,
+                    warnungen=[
+                        *entscheidung.warnungen,
+                        f"Unbelegte Aussage: {offen[0][:120]}",
+                        *[f"Unbelegte Aussage: {satz[:120]}" for satz in offen[1:]],
+                    ],
+                )
+
         return Antwort(
             text=text,
             grund=None,
@@ -379,6 +396,37 @@ class Pipeline:
             fehler=False,
             warnungen=entscheidung.warnungen,
         )
+
+    def _unbelegte_aussagen(self, text: str, quellen: list[Quelle]) -> list[str]:
+        """Claims that the passage they cite does not contain (spec: no hallucinations).
+
+        Every sentence is checked against its own source. A sentence without a
+        citation counts as unsupported: an answer must be able to name where each
+        statement comes from.
+        """
+        nach_quelle = {(quelle.quelle, quelle.seite): quelle.text for quelle in quellen}
+        offen: list[str] = []
+        for satz, quelle, seite in split_claims(text):
+            if quelle is None or seite is None:
+                offen.append(satz)
+                continue
+            passende = [
+                auszug
+                for (datei, nummer), auszug in nach_quelle.items()
+                if quelle in datei and nummer == seite
+            ]
+            if not passende:
+                offen.append(satz)
+                continue
+            system, user = build_claim_prompt(satz, passende[0])
+            try:
+                p = ja_wahrscheinlichkeit(self._logprobs(system, user))
+            except Exception:
+                offen.append(satz)
+                continue
+            if p is None or p < self.rag.antwort_schwelle:
+                offen.append(satz)
+        return offen
 
     def _answer_text(self, system: str, user: str) -> str:
         if self.answerer is None:

@@ -54,6 +54,8 @@ class Rag:
     gate_prompt: str = "teil"
     gate_kandidaten: int = 5
     antwort_passagen: int = 3
+    antwort_pruefung: bool = False
+    antwort_schwelle: float = 0.5
 
 
 @dataclass(frozen=True)
@@ -93,6 +95,8 @@ _RAG_KEYS = {
     "gate_prompt",
     "gate_kandidaten",
     "antwort_passagen",
+    "antwort_pruefung",
+    "antwort_schwelle",
 }
 _REQUIRED_BACKENDS = {
     "base_url",
@@ -203,6 +207,8 @@ def _rag(name: str, entry: Any, filename: str) -> Rag:
         gate_prompt=str(entry.get("gate_prompt", "teil")),
         gate_kandidaten=int(entry.get("gate_kandidaten", 5)),
         antwort_passagen=int(entry.get("antwort_passagen", 3)),
+        antwort_pruefung=bool(entry.get("antwort_pruefung", False)),
+        antwort_schwelle=float(entry.get("antwort_schwelle", 0.5)),
     )
 
 

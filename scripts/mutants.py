@@ -134,12 +134,6 @@ MUTANTS = [
         "            if p >= self.rag.laya_schwelle:",
         "            if True:",
     ),
-    Mutant(
-        "logprob-probability-ignores-the-no-tokens",
-        "src/arbiter/decision.py",
-        '        elif wort.startswith("nein"):',
-        "        elif False:",
-    ),
 ]
 
 

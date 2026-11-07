@@ -63,6 +63,11 @@ def test_ja_probability_is_none_without_yes_or_no() -> None:
     assert ja_wahrscheinlichkeit({"vielleicht": 1.0}) is None
 
 
+def test_ja_probability_is_zero_when_the_answer_is_no() -> None:
+    # 0.0 and None mean different things: "no" is a decision, "unknown" is not.
+    assert ja_wahrscheinlichkeit({"Nein": 0.95, "nein": 0.05}) == 0.0
+
+
 def test_client_reports_missing_logprobs() -> None:
     client = ChatClient(
         base_url="http://test",

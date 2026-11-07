@@ -9,14 +9,15 @@ degrading.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from arbiter.chunk import chunk_text
 from arbiter.config import Config, Rag
 from arbiter.embedding import HttpEmbedder
-from arbiter.fusion import rrf
+from arbiter.fusion import rrf_many
+from arbiter.hyde import ChatClient, build_prompt, truncate
 from arbiter.loaders import OcrHook, OcrPage, load_corpus
 from arbiter.ocr import VisionOcr, dots_to_text, render_png, word_overlap
 from arbiter.store import Hit, Record, Store
@@ -60,6 +61,7 @@ class SearchResult:
     passages: list[Passage]
     hyde_text: str | None = None
     rerank: str = "aus"  # "aus" | "aktiv" | "ausgefallen"
+    warnungen: list[str] = field(default_factory=list)
 
 
 class Pipeline:
@@ -77,6 +79,9 @@ class Pipeline:
             base_url=config.backends.base_url, model=config.backends.embed_model
         )
         self.store = Store(config.db_path)
+        # Callable(question, description) -> hypothetical answer document.
+        # Left empty here so tests can inject one and the real client stays lazy.
+        self.hyde: Callable[[str, str], str] | None = None
 
     def index(self) -> IndexReport:
         loaded = load_corpus(self.rag.corpus_path, self.rag.extensions, ocr=self._ocr_hook())
@@ -132,39 +137,64 @@ class Pipeline:
         self.store.ensure_fts(self.rag.name)
         return report
 
-    def search(self, question: str) -> SearchResult:
+    def search(self, question: str, hyde: bool | None = None) -> SearchResult:
         if len(question) > MAX_FRAGE_ZEICHEN:
             raise QuestionTooLong(
                 f"Frage zu lang: {len(question)} Zeichen, erlaubt sind {MAX_FRAGE_ZEICHEN}"
             )
 
-        vector = self.embedder.embed([question])[0]
-        dense = self.store.search_dense(self.rag.name, vector, self.rag.top_k_dense)
-        fts = self.store.search_fts(self.rag.name, question, self.rag.top_k_fts)
+        warnungen: list[str] = []
+        use_hyde = self.rag.hyde if hyde is None else hyde
 
-        dense_ids = [hit.id for hit in dense]
-        fts_ids = [hit.id for hit in fts]
-        fused = rrf(dense_ids, fts_ids, k=60, top_k=self.rag.fuse_top_k)
+        dense_ids, fts_ids, hits = self._rank_lists(question)
+        rankings: list[list[str]] = [dense_ids, fts_ids]
+        hyde_text: str | None = None
 
-        by_id: dict[str, Hit] = {hit.id: hit for hit in reversed(dense + fts)}
-        dense_rank = {hit.id: rank for rank, hit in enumerate(dense, start=1)}
-        fts_rank = {hit.id: rank for rank, hit in enumerate(fts, start=1)}
+        if use_hyde:
+            try:
+                hyde_text = self._hyde_document(question)
+            except Exception as exc:
+                warnungen.append(f"HyDE fehlgeschlagen, Suche ohne HyDE: {exc}")
+                hyde_text = None
+            if hyde_text:
+                hyde_dense_ids, hyde_fts_ids, hyde_hits = self._rank_lists(hyde_text)
+                rankings.extend([hyde_dense_ids, hyde_fts_ids])
+                hits.update(hyde_hits)
+
+        fused = rrf_many(rankings, k=60, top_k=self.rag.fuse_top_k)
 
         passages = [
             Passage(
                 id=chunk_id,
-                text=by_id[chunk_id].text,
-                quelle=by_id[chunk_id].quelle,
-                seite=by_id[chunk_id].seite,
+                text=hits[chunk_id].text,
+                quelle=hits[chunk_id].quelle,
+                seite=hits[chunk_id].seite,
                 rrf_rank=rank,
                 rrf_score=score,
-                dense_rank=dense_rank.get(chunk_id),
-                fts_rank=fts_rank.get(chunk_id),
             )
             for rank, (chunk_id, score) in enumerate(fused, start=1)
-            if chunk_id in by_id
+            if chunk_id in hits
         ]
-        return SearchResult(question=question, passages=passages)
+        return SearchResult(
+            question=question, passages=passages, hyde_text=hyde_text, warnungen=warnungen
+        )
+
+    def _rank_lists(self, text: str) -> tuple[list[str], list[str], dict[str, Hit]]:
+        """Both halves of the hybrid search over one query text."""
+        vector = self.embedder.embed([text])[0]
+        dense = self.store.search_dense(self.rag.name, vector, self.rag.top_k_dense)
+        fts = self.store.search_fts(self.rag.name, text, self.rag.top_k_fts)
+        hits = {hit.id: hit for hit in reversed(dense + fts)}
+        return [hit.id for hit in dense], [hit.id for hit in fts], hits
+
+    def _hyde_document(self, question: str) -> str:
+        """One hypothetical answer document, cut to ``hyde_max_chars``."""
+        if self.hyde is None:
+            client = ChatClient(self.config.backends.base_url, self.config.backends.chat_model)
+            system, user = build_prompt(question, self.rag.description)
+            self.hyde = lambda _q, _d: client.complete(system, user)
+        text = self.hyde(question, self.rag.description)
+        return truncate(str(text), self.rag.hyde_max_chars).strip()
 
     def _ocr_hook(self) -> OcrHook | None:
         """Both OCR models run on the same rendering; dots-mocr supplies the text."""

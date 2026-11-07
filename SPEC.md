@@ -95,11 +95,20 @@ Jedes Verhalten wird als Test geschrieben, rot gesehen, dann grün gemacht.
 - **B5** Eine Datei ohne lesbaren Text erzeugt eine Warnung mit Pfad; die
   Indexierung läuft weiter. Am Ende stehen die Zahl der übersprungenen Dateien
   und der textlosen Seiten.
-- **B6** Text wird in Abschnitte von höchstens 1200 Zeichen geteilt, an
-  Absatzgrenzen, mit 100 Zeichen Überlappung. Abschnitts-ID ist
+- **B6** Text wird in Abschnitte von höchstens `chunk_chars` Zeichen geteilt
+  (Default 600, Überlappung `chunk_overlap`, Default 100), an Absatzgrenzen.
+  Jeder Abschnitt beginnt mit `<Dateiname ohne Endung>, S. <Seite>` — der Kopf
+  hilft der dichten und der lexikalischen Suche. Abschnitts-ID ist
   `<quelle>#<seite>#<laufende Nummer>`.
-- **B7** Nach der Indexierung existiert ein Volltextindex auf `text`. Eine Suche
-  ohne diesen Index ist ein Fehler, kein leeres Ergebnis.
+  *Geändert 2026-11-07: vorher 1200 Zeichen ohne Kopf. Messung: Recall@10
+  0,58 → 0,65.*
+- **B7** Nach der Indexierung existiert ein Volltextindex auf `text`, deutsch,
+  Stemming über `fts_stem` schaltbar.
+- **B11** Eine Datei, deren Text bereits aus einem anderen Pfad indiziert wurde,
+  wird als Dublette übersprungen (Meldung mit beiden Pfaden). Zeilen von Dateien,
+  die nicht mehr im Korpus liegen, werden beim Indexieren entfernt.
+  *Grund: im Testkorpus lagen drei PDFs zusätzlich unter `ppt/` und belegten
+  doppelt Ränge.*
 - **B8** Eine PDF-Seite ohne Textebene wird bei `ocr: true` mit `ocr_dpi`
   (Default 200) gerendert und an **beide** OCR-Modelle geschickt. `dots-mocr`
   liefert den Text, der indiziert wird: seine Layout-JSON wird in Lesereihenfolge
@@ -125,6 +134,11 @@ Jedes Verhalten wird als Test geschrieben, rot gesehen, dann grün gemacht.
   bedeutet Sortierung nach `id` aufsteigend — die Ausgabe ist bei gleicher
   Eingabe gleich.
 - **C4** Die Fusion schneidet auf `fuse_top_k` (Default 20) ab.
+- **C5** HyDE-Listen gehen mit `hyde_gewicht` (Default 0.5) in die Fusion ein, die
+  Listen der Originalfrage mit 1.0.
+- **C6** `hybrid: false` lässt nur die dichte Suche laufen. Gemessen 2026-11-07:
+  dichte Suche allein Recall 0,71, mit Volltextteil 0,65 — die wiederholte
+  Kopfzeile der Foliensätze belegt sonst viele Plätze.
 
 ### D. HyDE
 
@@ -157,6 +171,14 @@ Jedes Verhalten wird als Test geschrieben, rot gesehen, dann grün gemacht.
   Modell einen Sammel-State über die ganze Textmenge statt über die Marke — alle
   P(true) lagen zwischen 0.98 und 0.99. Mit einer Passage je Request trennt es
   klar (Treffer 0.941 gegenüber Rauschen 0.001–0.028).
+- **F8** `gate_modus` wählt die Bauform: `noul` (je Passage), `choice` (eine Frage
+  über alle Kandidaten plus `keine`, Zulassung nur mit Vorsprung `gate_marge` vor
+  `keine`) oder `aus` (kein Modellaufruf, die Reranker-Reihenfolge entscheidet;
+  dient als Vergleichsgröße).
+  *Gemessen 2026-11-07 auf dem Goldset, richtige Belegstelle je Antwort: `aus`
+  19 von 23, `noul` 10 von 23, `choice` 2 von 23. Die Entscheidungsschicht mit
+  laya-multilingual entfernt in dieser Form gute Antworten und keine schlechten;
+  Default ist deshalb `aus`, bis ein belastbarer Gate-Modus gemessen ist.*
 - **F2** Eine Passage gilt als zulässig, wenn `p(true) >= laya_schwelle`
   (Default 0.50).
 - **F3** Ist keine Passage zulässig, liefert das System keine Antwort, sondern

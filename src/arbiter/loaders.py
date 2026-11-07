@@ -7,6 +7,7 @@ is reported and the page stays skipped. One broken document never stops a run.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -48,6 +49,7 @@ class LoadResult:
     warnings: list[str] = field(default_factory=list)
     skipped_files: int = 0
     textless_pages: int = 0
+    duplicates: int = 0
 
 
 def load_corpus(
@@ -62,15 +64,46 @@ def load_corpus(
         return result
 
     wanted = {ext.lower() for ext in extensions}
+    seen: dict[str, str] = {}
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path.suffix.lower() not in wanted:
             continue
         relative = path.relative_to(root).as_posix()
         if path.suffix.lower() == ".pdf":
+            before = len(result.documents)
             _load_pdf(path, relative, result, ocr)
+            _drop_duplicate(path, relative, result, before, seen)
         else:
+            before = len(result.documents)
             _load_text(path, relative, result)
+            _drop_duplicate(path, relative, result, before, seen)
     return result
+
+
+def _drop_duplicate(
+    path: Path,
+    relative: str,
+    result: LoadResult,
+    before: int,
+    seen: dict[str, str],
+) -> None:
+    """Skip a file whose text was already indexed from another path (spec B3).
+
+    The same document often sits twice in a download folder (once at the top
+    level, once in a subfolder). Indexing both puts the same text in two rows
+    and steals ranks from real results.
+    """
+    added = result.documents[before:]
+    if not added:
+        return
+    digest = hashlib.sha256("".join(doc.text for doc in added).encode("utf-8")).hexdigest()
+    earlier = seen.get(digest)
+    if earlier is not None:
+        del result.documents[before:]
+        result.duplicates += 1
+        result.warnings.append(f"{relative}: Dublette von {earlier}, übersprungen")
+        return
+    seen[digest] = relative
 
 
 def _load_pdf(path: Path, relative: str, result: LoadResult, ocr: OcrHook | None) -> None:

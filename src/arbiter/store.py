@@ -95,10 +95,32 @@ class Store:
             self._dim = dim
         return dim
 
-    def ensure_fts(self, rag: str) -> None:
+    def purge(self, rag: str, vorhandene: set[str]) -> int:
+        """Remove rows of files that are no longer in the corpus.
+
+        Without this, a file that was removed from the folder (or recognised as
+        a duplicate) keeps its rows and keeps stealing ranks.
+        """
+        table = self._table(rag)
+        bekannt = {row["quelle"] for row in table.to_arrow().to_pylist()}
+        verschwunden = sorted(bekannt - vorhandene)
+        if not verschwunden:
+            return 0
+        quoted = ", ".join("'" + quelle.replace("'", "''") + "'" for quelle in verschwunden)
+        table.delete(f"quelle IN ({quoted})")
+        return len(verschwunden)
+
+    def ensure_fts(self, rag: str, stem: bool = False) -> None:
         table = self._table(rag)
         try:
-            table.create_fts_index("text", replace=True, lower_case=True, ascii_folding=True)
+            table.create_fts_index(
+                "text",
+                replace=True,
+                lower_case=True,
+                ascii_folding=True,
+                language="German",
+                stem=stem,
+            )
         except Exception as exc:
             raise StoreError(f"Volltextindex für '{rag}' nicht erstellbar: {exc}") from exc
 

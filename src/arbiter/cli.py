@@ -82,7 +82,8 @@ def _index(pipeline: Pipeline) -> int:
     print(
         f"{report.files} Dateien, {report.chunks} Abschnitte, "
         f"{report.changed} neu oder geändert, {report.skipped_files} übersprungen, "
-        f"{report.textless_pages} Seiten ohne Text, {report.ocr_pages} Seiten per OCR"
+        f"{report.textless_pages} Seiten ohne Text, {report.ocr_pages} Seiten per OCR, "
+        f"{report.duplicates} Dubletten, {report.entfernt} Dateien aus dem Index entfernt"
     )
     for warning in report.warnings:
         print(f"  Hinweis: {warning}", file=sys.stderr)

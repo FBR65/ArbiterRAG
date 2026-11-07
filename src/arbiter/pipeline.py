@@ -20,11 +20,13 @@ from arbiter.config import Config, Rag
 from arbiter.decision import (
     DecisionError,
     SystemOne,
+    build_choice_questions,
     build_deckung_questions,
     build_noul_state,
     build_pair_questions,
     build_questions,
     build_widerspruch_questions,
+    choice_probabilities,
     level,
     probability,
 )
@@ -54,6 +56,8 @@ class IndexReport:
     skipped_files: int = 0
     textless_pages: int = 0
     ocr_pages: int = 0
+    duplicates: int = 0
+    entfernt: int = 0
     warnings: list[str] = field(default_factory=list)
 
 
@@ -144,6 +148,7 @@ class Pipeline:
             skipped_files=loaded.skipped_files,
             textless_pages=loaded.textless_pages,
             ocr_pages=sum(1 for doc in loaded.documents if doc.ocr),
+            duplicates=loaded.duplicates,
             warnings=list(loaded.warnings),
         )
         if not loaded.documents:
@@ -153,22 +158,27 @@ class Pipeline:
         texts: list[str] = []
         for document in loaded.documents:
             page = document.seite or 0
-            for number, text in enumerate(chunk_text(document.text), start=1):
+            kopf = f"[{Path(document.quelle).stem}, S. {page}] "
+            for number, text in enumerate(
+                chunk_text(document.text, self.rag.chunk_chars, self.rag.chunk_overlap),
+                start=1,
+            ):
                 chunk_id = f"{document.quelle}#{page}#{number}"
+                inhalt = kopf + text
                 records.append(
                     Record(
                         id=chunk_id,
-                        text=text,
+                        text=inhalt,
                         quelle=document.quelle,
                         seite=document.seite,
-                        hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                        hash=hashlib.sha256(inhalt.encode("utf-8")).hexdigest(),
                         vector=[],
                         ocr=document.ocr,
                         ocr_paddle=document.ocr_paddle,
                         ocr_ueberlappung=document.ocr_ueberlappung,
                     )
                 )
-                texts.append(text)
+                texts.append(inhalt)
 
         vectors = self._embed_all(texts)
         filled = [
@@ -188,7 +198,10 @@ class Pipeline:
 
         report.chunks = len(filled)
         report.changed = self.store.upsert(self.rag.name, filled)
-        self.store.ensure_fts(self.rag.name)
+        report.entfernt = self.store.purge(
+            self.rag.name, {document.quelle for document in loaded.documents}
+        )
+        self.store.ensure_fts(self.rag.name, stem=self.rag.fts_stem)
         return report
 
     def search(self, question: str, hyde: bool | None = None) -> SearchResult:
@@ -215,7 +228,14 @@ class Pipeline:
                 rankings.extend([hyde_dense_ids, hyde_fts_ids])
                 hits.update(hyde_hits)
 
-        fused = rrf_many(rankings, k=60, top_k=self.rag.fuse_top_k)
+        fused = rrf_many(
+            rankings,
+            k=60,
+            top_k=self.rag.fuse_top_k,
+            weights=[1.0] * (len(rankings) - 2) + [self.rag.hyde_gewicht] * 2
+            if len(rankings) > 2
+            else None,
+        )
 
         passages = [
             Passage(
@@ -260,6 +280,9 @@ class Pipeline:
         """Both halves of the hybrid search over one query text."""
         vector = self.embedder.embed([text])[0]
         dense = self.store.search_dense(self.rag.name, vector, self.rag.top_k_dense)
+        if not self.rag.hybrid:
+            hits = {hit.id: hit for hit in reversed(dense)}
+            return [hit.id for hit in dense], [], hits
         fts = self.store.search_fts(self.rag.name, text, self.rag.top_k_fts)
         hits = {hit.id: hit for hit in reversed(dense + fts)}
         return [hit.id for hit in dense], [hit.id for hit in fts], hits
@@ -276,6 +299,14 @@ class Pipeline:
         warnungen = list(result.warnungen)
         if not passages:
             return Entscheidung(False, "keine Passage gefunden", [], [], [], warnungen)
+
+        if self.rag.gate_modus == "choice":
+            return self._bewerte_choice(result, passages, warnungen)
+        if self.rag.gate_modus == "aus":
+            # No decision call: the reranker order alone decides. This exists to
+            # measure what the decision layer adds, not as a production default.
+            auswahl = [Zulassung(passage=passage, p=1.0) for passage in passages[:3]]
+            return Entscheidung(True, None, auswahl, auswahl, [], warnungen)
 
         zulassungen: list[Zulassung] = []
         for number, passage in enumerate(passages, start=1):
@@ -304,6 +335,33 @@ class Pipeline:
             paare=paare,
             warnungen=warnungen,
         )
+
+    def _bewerte_choice(
+        self, result: SearchResult, passages: list[Passage], warnungen: list[str]
+    ) -> Entscheidung:
+        """Gate as one choice over all candidates plus "keine" (E2)."""
+        state = build_noul_state(result.question, [passage.text for passage in passages])
+        answers = self._ask_decision(state, build_choice_questions(len(passages)))
+        probabilities = choice_probabilities(answers)
+
+        if not probabilities:
+            warnungen.append("keine Antwort der Prüfschicht")
+            return Entscheidung(False, "keine belegte Passage", [], [], [], warnungen)
+
+        bester = max(probabilities, key=lambda option: probabilities[option])
+        keine = probabilities.get("keine", 0.0)
+        marge = self.rag.gate_marge
+        # An absolute threshold is meaningless with eleven options: the mass is
+        # spread over them. What counts is the lead over "keine" (measured
+        # 2026-11-07: with laya_schwelle as a hard cut nothing was admitted).
+        if bester == "keine" or probabilities[bester] < keine + marge:
+            return Entscheidung(False, "keine belegte Passage", [], [], [], warnungen)
+
+        nummer = int(bester.lstrip("p"))
+        passage = passages[nummer - 1]
+        zulassung = Zulassung(passage=passage, p=probabilities[bester])
+        zulassung = replace(zulassung, deckung=self._deckung(result.question, passage))
+        return Entscheidung(True, None, [zulassung], [zulassung], [], warnungen)
 
     def _gate(self, question: str, passage: Passage) -> tuple[float, str | None]:
         """P(true) that this one passage answers the question (spec F1, F2)."""

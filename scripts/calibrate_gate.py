@@ -52,8 +52,6 @@ print(f"{'Schwelle':>8} {'belegbar erkannt':>18} {'nicht beantwortbar abgelehnt'
 for schwelle in (0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9):
     erkannt = sum(1 for p in treffer if p >= schwelle)
     abgelehnt = sum(1 for p in leer if p < schwelle)
-    print(
-        f"{schwelle:>8.1f} {erkannt:>10}/{len(treffer):<7} {abgelehnt:>16}/{len(leer):<13}"
-    )
+    print(f"{schwelle:>8.1f} {erkannt:>10}/{len(treffer):<7} {abgelehnt:>16}/{len(leer):<13}")
 
 print(f"\nGold-Passage nie im Pool: {sum(1 for p in treffer if p == 0.0)} von {len(treffer)}")

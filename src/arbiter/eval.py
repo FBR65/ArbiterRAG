@@ -119,10 +119,17 @@ def _stage(
 
 
 def run(pipeline: Pipeline, goldset: list[GoldFrage]) -> list[Stufe]:
-    """Measure the four stages on the same questions."""
-    nur_fusion = replace(pipeline.rag, hyde=False, rerank=False)
-    mit_hyde = replace(pipeline.rag, hyde=True, rerank=False)
-    mit_rerank = replace(pipeline.rag, hyde=True, rerank=True)
+    """Measure the four stages on the same questions.
+
+    Every stage returns the same number of passages (10). Otherwise the rerank
+    stage would be scored on five passages and look worse than the fusion stage
+    for a reason that is not the reranker.
+    """
+    laenge = max(10, pipeline.rag.fuse_top_k, pipeline.rag.rerank_top_n)
+    gleich = replace(pipeline.rag, fuse_top_k=laenge, rerank_top_n=laenge)
+    nur_fusion = replace(gleich, hyde=False, rerank=False)
+    mit_hyde = replace(gleich, hyde=True, rerank=False)
+    mit_rerank = replace(gleich, hyde=True, rerank=True)
 
     def stage_pipeline(rag: object) -> Pipeline:
         twin = Pipeline(pipeline.config, rag, embedder=pipeline.embedder)  # type: ignore[arg-type]

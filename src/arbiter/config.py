@@ -47,6 +47,13 @@ class Rag:
     ocr: bool = False
     ocr_dpi: int = 200
     rerank: bool = True
+    chunk_chars: int = 600
+    chunk_overlap: int = 100
+    hybrid: bool = True
+    fts_stem: bool = False
+    hyde_gewicht: float = 0.5
+    gate_modus: str = "noul"
+    gate_marge: float = 0.1
     widerspruch_niveau: float | None = None
     redundanz_niveau: float | None = None
 
@@ -82,6 +89,13 @@ _RAG_KEYS = {
     "ocr",
     "ocr_dpi",
     "rerank",
+    "chunk_chars",
+    "chunk_overlap",
+    "hybrid",
+    "fts_stem",
+    "hyde_gewicht",
+    "gate_modus",
+    "gate_marge",
     "widerspruch_niveau",
     "redundanz_niveau",
 }
@@ -188,6 +202,13 @@ def _rag(name: str, entry: Any, filename: str) -> Rag:
         ocr=bool(entry.get("ocr", False)),
         ocr_dpi=int(entry.get("ocr_dpi", 200)),
         rerank=bool(entry.get("rerank", True)),
+        chunk_chars=int(entry.get("chunk_chars", 600)),
+        chunk_overlap=int(entry.get("chunk_overlap", 100)),
+        hybrid=bool(entry.get("hybrid", True)),
+        fts_stem=bool(entry.get("fts_stem", False)),
+        hyde_gewicht=float(entry.get("hyde_gewicht", 0.5)),
+        gate_modus=str(entry.get("gate_modus", "noul")),
+        gate_marge=float(entry.get("gate_marge", 0.1)),
         widerspruch_niveau=(
             None if entry.get("widerspruch_niveau") is None else float(entry["widerspruch_niveau"])
         ),

@@ -10,14 +10,16 @@ from __future__ import annotations
 import httpx
 
 SYSTEM_TEMPLATE = (
-    "Du bist ein Suchassistent für ein Dokumentenarchiv. "
+    "Du hilfst beim Suchen in einem Dokumentenarchiv. "
     "Der Bestand enthält: {description}. "
-    "Antworte auf Deutsch, in ganzen Sätzen, ohne Vorrede, ohne Aufzählung und "
-    "ohne Quellenangabe. Erfinde keine Zahlen, wenn du sie nicht kennst."
+    "Antworte auf Deutsch. Nenne keine ganzen Sätze, sondern nur eine Liste von "
+    "Fachbegriffen, Eigennamen, Zahlen und Wortverbindungen, die in dem Abschnitt "
+    "stehen müssten, der diese Frage beantwortet. Höchstens zwölf Einträge, "
+    "durch Komma getrennt. Erfinde keine Zahlen."
 )
 
 USER_TEMPLATE = (
-    "Frage: {question}\n\nSchreibe den Textabschnitt, der diese Frage beantworten würde."
+    "Frage: {question}\n\nWelche Begriffe und Zahlen müsste der antwortende Abschnitt enthalten?"
 )
 
 

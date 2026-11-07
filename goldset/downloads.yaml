@@ -32,19 +32,19 @@ fragen:
   - frage: Welche Rolle spielt das Model Context Protocol zwischen Sprachmodell und BI-System?
     beantwortbar: true
     erwartet:
-      - { quelle: "BI im KI-Zeitalter", seite: 5 }
+      - { quelle: "Business Intelligence im KI-Zeitalter", seite: 5 }
   - frage: Warum verändert generative KI die Rolle des BI-Entwicklers?
     beantwortbar: true
     erwartet:
-      - { quelle: "BI im KI-Zeitalter", seite: 3 }
+      - { quelle: "Business Intelligence im KI-Zeitalter", seite: 3 }
   - frage: Welche Fähigkeiten sind statt reiner technischer Expertise gefragt?
     beantwortbar: true
     erwartet:
-      - { quelle: "BI im KI-Zeitalter", seite: 7 }
+      - { quelle: "Business Intelligence im KI-Zeitalter", seite: 7 }
   - frage: Was muss ein Sprachmodell über fachliche Begriffe und Kennzahlen wissen?
     beantwortbar: true
     erwartet:
-      - { quelle: "BI im KI-Zeitalter", seite: 6 }
+      - { quelle: "Business Intelligence im KI-Zeitalter", seite: 6 }
   - frage: Warum wirken Demos überzeugend, obwohl der Betrieb später scheitert?
     beantwortbar: true
     erwartet:

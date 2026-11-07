@@ -139,6 +139,39 @@ def build_widerspruch_questions(pairs: list[tuple[int, int]]) -> dict[str, Any]:
     }
 
 
+def build_choice_questions(count: int) -> dict[str, Any]:
+    """One ``choice`` question over all markers plus "keine" (E2).
+
+    A small model decides better between named options than on an absolute
+    yes/no per passage: the softmax over options forces one winner, so a state
+    that contains no answer has to spend its probability on "keine".
+    """
+    criteria = {
+        f"p{number}": f"Auszug [{number}] beantwortet die Frage" for number in range(1, count + 1)
+    }
+    criteria["keine"] = "Keiner der Auszüge beantwortet die Frage"
+    return {
+        "wahl": {
+            "type": "choice",
+            "instructions": "Welcher Auszug beantwortet die Frage?",
+            "criteria": criteria,
+        }
+    }
+
+
+def choice_probabilities(
+    answers: dict[str, Any], key: str = "wahl"
+) -> dict[str, float]:
+    """Probabilities per option of one ``choice`` answer (empty if missing)."""
+    entry = answers.get(key)
+    if not isinstance(entry, dict):
+        return {}
+    probabilities = entry.get("probabilities")
+    if not isinstance(probabilities, dict):
+        return {}
+    return {str(option): float(value) for option, value in probabilities.items()}
+
+
 def probability(answers: dict[str, Any], key: str) -> tuple[float, str | None]:
     """P(true) of one ``noul`` answer; a missing key is 0.0 with a note."""
     entry = answers.get(key)

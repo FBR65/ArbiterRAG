@@ -65,7 +65,9 @@ class ChatClient:
             raise ChatError(f"{self._model}: Antwort ohne Text") from exc
         return str(content).strip()
 
-    def probabilities(self, system: str, user: str, top_n: int = 20) -> dict[str, float]:
+    def probabilities(
+        self, system: str, user: str, top_n: int = 20, grammar: str | None = None
+    ) -> dict[str, float]:
         """Probability per candidate first token (spec: gate over logprobs).
 
         The model answers with one token. ``top_logprobs`` gives the alternatives;
@@ -79,6 +81,7 @@ class ChatClient:
             "max_tokens": 1,
             "logprobs": True,
             "top_logprobs": top_n,
+            "grammar": grammar,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},

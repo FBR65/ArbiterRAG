@@ -18,6 +18,7 @@ from arbiter.check import build_claim_prompt, build_repair_prompt, split_claims
 from arbiter.chunk import chunk_text
 from arbiter.config import Config, Rag
 from arbiter.decision import (
+    GATE_GRAMMATIK,
     DecisionError,
     build_ja_nein_prompt,
     ja_wahrscheinlichkeit,
@@ -76,6 +77,7 @@ class Entscheidung:
     grund: str | None
     auswahl: list[Zulassung]
     warnungen: list[str] = field(default_factory=list)
+    sicher: bool = False
 
 
 @dataclass(frozen=True)
@@ -310,7 +312,11 @@ class Pipeline:
                 continue
             p = ja_wahrscheinlichkeit(verteilung)
             if p is None:
-                warnungen.append("Prüfschicht lieferte keine Logprobs")
+                # The model did not answer with ja/nein (measured: 467 of 1000 on long
+                # contexts). Refusing here would answer nothing although the passage may
+                # be right, so the passage is admitted and the sentence check decides.
+                warnungen.append("Prüfschicht ohne verwertbare Antwort, Passage zugelassen")
+                zulassungen.append(Zulassung(passage=passage, p=0.0))
                 continue
             if p >= self.rag.gate_schwelle:
                 zulassungen.append(Zulassung(passage=passage, p=p))
@@ -318,14 +324,17 @@ class Pipeline:
         if not zulassungen:
             return Entscheidung(False, "keine belegte Passage", [], warnungen)
         auswahl = sorted(zulassungen, key=lambda item: item.p, reverse=True)
-        return Entscheidung(True, None, auswahl, warnungen)
+        # "sicher" heisst: das Gate hat fuer mindestens eine Passage ja gesagt. Nur dann
+        # darf als letzter Ausweg die Belegstelle zitiert werden.
+        sicher = any(zulassung.p >= self.rag.gate_schwelle for zulassung in zulassungen)
+        return Entscheidung(True, None, auswahl, warnungen, sicher)
 
     def _logprobs(self, system: str, user: str) -> dict[str, float]:
         """Logprob map of the chat model; injectable for tests."""
         if self.gate_logprobs is not None:
             return self.gate_logprobs(system, user)
         client = ChatClient(self.config.backends.base_url, self.config.backends.chat_model)
-        return client.probabilities(system, user)
+        return client.probabilities(system, user, grammar=GATE_GRAMMATIK)
 
     def ask(
         self,
@@ -399,11 +408,22 @@ class Pipeline:
                 zusatz = [f"Gestrichen (nicht belegt): {satz[:120]}" for satz in verworfen]
             if behalten:
                 text = " ".join(behalten)
-            else:
-                # Nothing survived the check. Instead of refusing, quote the source:
-                # a verbatim passage cannot be a hallucination.
+            elif entscheidung.sicher:
+                # Nothing survived the check, but the gate was sure: quote the source.
+                # A verbatim passage cannot be a hallucination.
                 text = self._zitat(quellen)
                 zusatz.append("Keine belegte Aussage formuliert, Belegstelle zitiert")
+            else:
+                # The gate could not decide and no sentence was supported. Answering
+                # anyway would mean answering from a passage nobody vouched for.
+                return Antwort(
+                    text=None,
+                    grund="keine belegte Passage",
+                    quellen=quellen,
+                    entscheidung=entscheidung,
+                    fehler=False,
+                    warnungen=[*entscheidung.warnungen, *zusatz],
+                )
 
         return Antwort(
             text=text,

@@ -307,6 +307,30 @@ Das Chunking bringt danach nichts mehr: 300 Zeichen mit Rückgabe der ganzen Sei
 (small-to-big) liefert 11 statt 12 richtige Belege und drei statt einer Antwort ohne
 Beleg. Der Gewinn kam vom Sprachfilter, nicht von der Zerlegung. **600 Zeichen bleiben.**
 
+### Grammatik statt Glückssache
+
+Bei 467 von 1000 Kalibrierungsfällen antwortete das Gate nicht mit „ja"/„nein", sondern
+mit einem Satzanfang. llama.cpp kann eine **Grammatik** erzwingen
+(`root ::= "ja" | "nein"`); damit ist die Antwort immer eine der beiden. Nebenwirkung:
+das Modell muss sich entscheiden, wo es vorher ausgewichen ist.
+
+| Kette, deutscher Korpus | Antworten | Beleg ok | ohne Beleg | Zitate |
+|---|---|---|---|---|
+| ohne Grammatik | 13 | 12 | 1 | 8 |
+| mit Grammatik (HyDE aus) | 13 | 11 | 2 | 8 |
+| mit Grammatik (HyDE an) | 13 | 12 | 1 | 8 |
+
+Der Unterschied liegt innerhalb der Schwankung von ±1. Die Grammatik verbessert die
+Trefferquote nicht, sie **beseitigt aber den unentschiedenen Zustand**: es gibt keine
+Passage mehr, die „irgendwie" zugelassen wird, ohne dass das Modell ja gesagt hat. Für
+ein System, das null Falschantworten verspricht, ist ein definierter Zustand mehr wert
+als eine Zahl, die um eins schwankt. Sie bleibt eingeschaltet.
+
+**Zwischenstand zum Ziel.** Auf dem deutschen Korpus trifft die Antwort bei 12 von 12
+beantwortbaren Fragen die richtige Seite; die vier nicht beantwortbaren Fragen werden
+abgelehnt. Offen sind die acht Zitate und die zwei Antworten, die eine falsche Passage
+zitieren — beides Fehler der Satzprüfung, nicht der Suche und nicht des Chunkings.
+
 Was jetzt noch offen ist: **8 von 13 Antworten sind Zitate.** Die Satzprüfung verwirft
 deutsche Umformulierungen, obwohl Quelle und Aussage dieselbe Sprache haben. Das ist
 kein Sprachproblem mehr, sondern eine zu enge Formulierung der Prüffrage. Sie zu

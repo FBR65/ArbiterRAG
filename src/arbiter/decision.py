@@ -16,6 +16,9 @@ class DecisionError(Exception):
     """The gate could not be asked."""
 
 
+GATE_GRAMMATIK = 'root ::= "ja" | "nein"'
+
+
 def ja_wahrscheinlichkeit(verteilung: dict[str, float]) -> float | None:
     """Sum the probability of every token that means yes.
 
@@ -29,7 +32,9 @@ def ja_wahrscheinlichkeit(verteilung: dict[str, float]) -> float | None:
         wort = token.strip().strip(".,!;:").casefold()
         if wort.startswith("ja"):
             ja += wert
-        elif wort.startswith("nein"):
+        elif wort.startswith(("nein", "ne")):
+            # With the grammar only "ja" and "nein" are allowed, and "nein" is split
+            # into "ne" + "in" by the tokenizer; the prefix still identifies it.
             nein += wert
     if ja == 0.0 and nein == 0.0:
         return None

@@ -347,7 +347,7 @@ class Pipeline:
                 seite=zulassung.passage.seite,
                 text=zulassung.passage.text,
             )
-            for zulassung in entscheidung.auswahl[:3]
+            for zulassung in entscheidung.auswahl[: self.rag.antwort_passagen]
         ]
         system, user = build_answer_prompt(question, quellen)
         try:

@@ -188,6 +188,36 @@ Zwei Einschränkungen, die dazugehören:
 Für den nomic-Lauf musste `nomic-embed-text-v2-moe` in llama-swap um `--embeddings
 --pooling mean` ergänzt werden; ohne das Flag antwortet der Server 501.
 
+## G — Drei oder fünf Passagen für die Antwort?
+
+Die Prüfung sieht fünf Kandidaten, die Antwort zitiert seit jeher bis zu drei. Bringt
+das fünfte dem Antwortschritt etwas? `scripts/measure_answer_passages.py`.
+
+Verteilung der zugelassenen Passagen je Frage (31 Fragen):
+
+| zugelassen | 0 | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|---|
+| Fragen | 10 | 4 | 5 | 5 | 2 | 5 |
+
+Für **7 von 31** Fragen greift die Grenze von drei überhaupt. Für diese sieben ist
+der Hebel wirksam: mit fünf zitiert die Antwort vier bis fünf Quellen statt drei,
+der Text ist in 6 von 7 Fällen ein anderer (181 bis 948 Zeichen Unterschied).
+
+| zitiert | Antworten | Beleg ok | falsch |
+|---|---|---|---|
+| bis 3 | 21 | 16 | 5 |
+| bis 5 | 21 | 16 | 5 |
+
+**Ergebnis:** kein Unterschied. Die zusätzlichen Passagen werden zitiert, tragen aber
+in keinem Fall den Beleg — die richtige Quelle war schon unter den ersten drei. Der
+Unterschied, den ich messen kann, ist null; ein möglicher Gewinn an Vollständigkeit
+bei mehrteiligen Fragen liegt außerhalb dessen, was das Goldset prüft (es kennt nur
+die Zielseiten, nicht ob die Antwort vollständig ist).
+
+**Entscheidung:** Default bleibt drei. Fünf kosten Kontext und Antwortzeit ohne
+belegten Nutzen. Wer vollständigere Antworten will, muss das mit einem Goldset
+messen, das Vollständigkeit bewertet, nicht nur die Quelle.
+
 ## Endstand der Kette
 
 | Stufe | Recall@10 | nDCG@10 | Beleg ok (von 23) |

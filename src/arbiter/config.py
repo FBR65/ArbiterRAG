@@ -53,6 +53,7 @@ class Rag:
     hyde_gewicht: float = 0.5
     gate_prompt: str = "teil"
     gate_kandidaten: int = 5
+    antwort_passagen: int = 3
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,7 @@ _RAG_KEYS = {
     "hyde_gewicht",
     "gate_prompt",
     "gate_kandidaten",
+    "antwort_passagen",
 }
 _REQUIRED_BACKENDS = {
     "base_url",
@@ -200,6 +202,7 @@ def _rag(name: str, entry: Any, filename: str) -> Rag:
         hyde_gewicht=float(entry.get("hyde_gewicht", 0.5)),
         gate_prompt=str(entry.get("gate_prompt", "teil")),
         gate_kandidaten=int(entry.get("gate_kandidaten", 5)),
+        antwort_passagen=int(entry.get("antwort_passagen", 3)),
     )
 
 

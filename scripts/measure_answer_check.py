@@ -9,7 +9,6 @@ import os
 from pathlib import Path
 
 from arbiter.config import load_config
-from arbiter.decision import SystemOne
 from arbiter.eval import load_goldset
 from arbiter.pipeline import Pipeline
 
@@ -24,7 +23,7 @@ for gold in goldset:
     antwort = pipeline.ask(gold.frage)
     if antwort.text is None or antwort.entscheidung is None:
         continue
-    stuetzung = pipeline._pruefe_antwort(  # noqa: SLF001 - measurement only
+    stuetzung = pipeline._pruefe_antwort(
         antwort.text,
         [
             type(antwort.quellen[0])(

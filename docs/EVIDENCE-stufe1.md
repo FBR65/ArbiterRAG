@@ -110,10 +110,75 @@ und Steuerunterlagen sind ungemessen.
    seinen Hash aus der ID statt aus dem Text und konnte die Ersetzung deshalb nicht
    auslösen. Jetzt ist der Hash ein SHA-256 des Textes — das ist die Zusage aus B4.
 
-## 5. Offen (blockiert Stufe 2 nicht, Stufe 3 und den echten Lauf schon)
+## 5. Nachtrag Stufe 1b — OCR für Seiten ohne Textebene (D10=b, D13=a, D14=a)
+
+Freigabe 2026-11-07. Neue Abhängigkeiten: `pypdfium2` (BSD-3/Apache-2.0, rendert die
+Seite) und `pillow` (HPND, kodiert PNG).
+
+**Achtung, D14 nicht wie geplant erfüllt:** `~/Dokumente/dev/U-OCR_test/` existiert
+nicht mehr. Der Prompt stammt deshalb nicht aus deinem Projekt, sondern aus der
+offiziellen Model Card von `dots-studio/dots.mocr` — dort steht derselbe
+JSON-Auftrag mit Kategorien und Lesereihenfolge. Er steht wörtlich in
+`src/arbiter/ocr.py` und ist nicht umformuliert.
+
+| Kriterium | Test | Ergebnis |
+|---|---|---|
+| B8 Seite ohne Text → beide Modelle, dots-Text indiziert | `test_textless_page_goes_through_the_ocr_hook` | grün |
+| B8 Layout-JSON wird Lesereihenfolge, Bilder ohne Text | `test_dots_json_becomes_reading_order_text`, `test_dots_json_wrapped_in_code_fence_is_read` | grün |
+| B8 Antwort ohne JSON wird durchgereicht, nicht verworfen | `test_non_json_answer_is_passed_through_unchanged` | grün |
+| B8 Wortüberlappung | `test_word_overlap_bounds`, `test_one_shared_word_out_of_four_is_a_quarter_not_a_match` | grün |
+| B8 Rendern ergibt PNG, unbekannte Seite wird abgelehnt | `test_render_produces_png`, `test_render_rejects_unknown_page` | grün |
+| B8 Aufruf ist OpenAI-kompatibel (Bild als data-URI, Text danach) | `test_vision_client_sends_data_uri_and_reads_answer` | grün |
+| B9 OCR-Fehler → Warnung, Seite bleibt übersprungen | `test_failing_ocr_is_a_warning_not_a_crash`, `test_vision_client_reports_http_error` | grün |
+| B8 Seiten **mit** Textebene lösen kein OCR aus | `test_pages_with_text_layer_do_not_use_the_hook` | grün |
+| B10 alte Tabelle wird migriert | `test_store_migrates_a_table_without_ocr_columns` | grün |
+
+Echter Lauf (derselbe Korpus, `ocr: true`):
+
+```
+10 Dateien, 1054 Abschnitte, 1 neu oder geändert, 0 übersprungen, 0 Seiten ohne Text, 1 Seiten per OCR
+```
+
+Die Seite `PATCHT-Trennblatt.pdf` ist damit im Index. Beide Modelle lesen sie
+gleich; Überlappung 1.0:
+
+```
+dots  : TRENNBLATT Dieses Blatt trennt Dokumente. Nach diesem Blatt beginnt ein neues Dokument.
+paddle: TRENNBLATT Dieses Blatt trennt Dokumente. Nach diesem Blatt beginnt ein neues Dokument.
+```
+
+**Gemessene Grenze:** `dots-mocr` liest bei 100, 150 und 200 dpi identisch; bei 250
+und 300 dpi antwortet der Server `HTTP 500 failed to process mtmd chunk`. Default
+ist deshalb 200, nicht 300. Messskript: `scripts/probe_ocr_dpi.py`.
+
+**Zwei Befunde aus dem Lauf:**
+
+1. Der erste Versuch bei 300 dpi scheiterte an dieser Grenze — die OCR-Grenze war
+   nicht die Auflösung, sondern das Bildmaß. Ohne Messung wäre 300 dpi im Code
+   gelandet.
+2. Der Schreibvorgang brach mit `'ocr' does not exist in table schema` ab, weil die
+   Tabelle vor den neuen Spalten entstand. Behoben durch `add_columns` beim Öffnen
+   (B10) statt durch Neuaufbau des Index.
+
+**Gauntlet nach dem Nachtrag** (frischer Lauf, `6d1a5c2`):
+
+```
+uv run pytest -q                                    71 passed
+uv run pytest -q --cov=arbiter                      90 % (630 Zeilen, 60 nicht ausgeführt)
+uv run ruff check . / format --check                clean / clean
+uv run mypy                                         keine Befunde in 10 Dateien
+uv run python scripts/mutants.py                    10/10 Mutanten getötet
+```
+
+Der Mutantenlauf hat eine echte Lücke gefunden: `word_overlap` mit `min()` im Nenner
+überlebte, weil beide Testpaare gleich viele Wörter hatten. Erst der zusätzliche
+Fall „ein gemeinsames Wort von vier" tötet ihn. Der Test ist damit schärfer, nicht
+weicher.
+
+## 6. Offen
 
 | ID | Frage |
 |---|---|
-| D10 | PDF ohne Textebene: überspringen und zählen (a), OCR über llama-swap (b), Abbruch (c)? Vorschlag: (a) |
-| D11 | Reranker: `bge-reranker-v2-m3` liegt nur als safetensors vor, der llama-swap-Eintrag startet nicht. GGUF laden und Eintrag reparieren? Vorschlag: in Stufe 3 |
-| D12 | Pfad des echten PDF-Korpus |
+| D11 | erledigt: Reranker läuft (`/v1/rerank`, Logits, nicht kalibriert) |
+| D12 | erledigt: `/home/speedy/Downloads`, 10 Dateien, 1054 Abschnitte |
+| D14 | Abweichung: Quellprojekt weg, Prompt aus der Model Card — bestätigen oder korrigieren |

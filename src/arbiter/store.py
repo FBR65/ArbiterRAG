@@ -31,6 +31,7 @@ class Record:
     ocr: bool = False
     ocr_paddle: str = ""
     ocr_ueberlappung: float = 0.0
+    eltern: str = ""
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,7 @@ class Hit:
     ocr: bool = False
     ocr_paddle: str = ""
     ocr_ueberlappung: float = 0.0
+    eltern: str = ""
 
 
 class Store:
@@ -185,6 +187,7 @@ class Store:
                 ("ocr", "false"),
                 ("ocr_paddle", "''"),
                 ("ocr_ueberlappung", "0.0"),
+                ("eltern", "''"),
             )
             if name not in present
         }
@@ -211,6 +214,7 @@ class Store:
                 pa.field("ocr", pa.bool_()),
                 pa.field("ocr_paddle", pa.string()),
                 pa.field("ocr_ueberlappung", pa.float64()),
+                pa.field("eltern", pa.string()),
             ]
         )
 
@@ -222,11 +226,12 @@ class Store:
 
 
 def _ocr_fields(row: dict[str, Any]) -> dict[str, Any]:
-    """Rows written before the OCR columns existed simply have no values."""
+    """Rows written before a column existed simply have no values."""
     return {
         "ocr": bool(row.get("ocr", False)),
         "ocr_paddle": str(row.get("ocr_paddle", "") or ""),
         "ocr_ueberlappung": float(row.get("ocr_ueberlappung", 0.0) or 0.0),
+        "eltern": str(row.get("eltern", "") or ""),
     }
 
 
@@ -250,4 +255,5 @@ def _row(record: Record) -> dict[str, object]:
         "ocr": record.ocr,
         "ocr_paddle": record.ocr_paddle,
         "ocr_ueberlappung": record.ocr_ueberlappung,
+        "eltern": record.eltern,
     }

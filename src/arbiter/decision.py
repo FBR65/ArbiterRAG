@@ -60,6 +60,7 @@ def build_ja_nein_prompt(question: str, passage: str, variante: str = "teil") ->
             "Du prüfst, ob ein Text zur Beantwortung einer Frage beiträgt. "
             "Antworte mit genau einem Wort: ja oder nein. Antworte mit ja, wenn "
             "der Text Angaben enthält, die für die Antwort nötig sind — auch wenn "
-            "sie allein nicht ausreichen."
+            "sie allein nicht ausreichen. Frage und Text können in verschiedenen "
+            "Sprachen stehen; das ist kein Grund für nein."
         )
     return system, f"Frage: {question}\n\nText: {passage}"

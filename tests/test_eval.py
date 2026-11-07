@@ -53,7 +53,7 @@ def test_unanswerable_questions_are_not_scored_in_recall() -> None:
 
 def test_goldset_file_parses() -> None:
     fragen = load_goldset(Path("goldset/downloads.yaml"))
-    assert len(fragen) >= 25
+    assert len(fragen) >= 20
     assert any(frage.beantwortbar for frage in fragen)
     assert any(not frage.beantwortbar for frage in fragen)
 

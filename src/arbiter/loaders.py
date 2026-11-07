@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -52,10 +53,39 @@ class LoadResult:
     duplicates: int = 0
 
 
+_DE = {
+    "der",
+    "die",
+    "das",
+    "und",
+    "ist",
+    "nicht",
+    "ein",
+    "eine",
+    "mit",
+    "für",
+    "auf",
+    "wird",
+    "werden",
+}
+_EN = {"the", "and", "of", "is", "not", "a", "with", "for", "on", "to", "are", "this"}
+
+
+def detect_language(text: str) -> str:
+    """Coarse language of a text: German, English or unknown (spec: corpus language)."""
+    worte = re.findall(r"[A-Za-zÄÖÜäöüß]+", text.casefold())
+    deutsch = sum(1 for wort in worte if wort in _DE)
+    englisch = sum(1 for wort in worte if wort in _EN)
+    if deutsch == 0 and englisch == 0:
+        return "unbekannt"
+    return "de" if deutsch >= englisch else "en"
+
+
 def load_corpus(
     root: Path,
     extensions: tuple[str, ...],
     ocr: OcrHook | None = None,
+    sprache: str | None = None,
 ) -> LoadResult:
     """Read every configured file under ``root``, recursively."""
     result = LoadResult()
@@ -65,6 +95,7 @@ def load_corpus(
 
     wanted = {ext.lower() for ext in extensions}
     seen: dict[str, str] = {}
+    fremdsprachig: list[str] = []
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path.suffix.lower() not in wanted:
             continue
@@ -77,6 +108,24 @@ def load_corpus(
             before = len(result.documents)
             _load_text(path, relative, result)
             _drop_duplicate(path, relative, result, before, seen)
+    if sprache is not None:
+        # Decide per file, not per page: one short page is no language sample.
+        gesamt: dict[str, list[Document]] = {}
+        for doc in result.documents:
+            gesamt.setdefault(doc.quelle, []).append(doc)
+        behalten: list[Document] = []
+        for datei, seiten in gesamt.items():
+            text = " ".join(seite.text for seite in seiten)
+            if detect_language(text) in (sprache, "unbekannt"):
+                behalten.extend(seiten)
+            else:
+                fremdsprachig.append(datei)
+        result.documents = behalten
+        if fremdsprachig:
+            result.warnings.append(
+                f"{len(fremdsprachig)} fremdsprachige Datei(en) übersprungen: "
+                + ", ".join(sorted(fremdsprachig)[:5])
+            )
     return result
 
 

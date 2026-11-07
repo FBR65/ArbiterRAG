@@ -48,6 +48,8 @@ class Rag:
     rerank: bool = True
     chunk_chars: int = 600
     chunk_overlap: int = 100
+    eltern_seite: bool = False
+    sprache: str | None = None
     hybrid: bool = True
     fts_stem: bool = False
     hyde_gewicht: float = 0.5
@@ -90,6 +92,8 @@ _RAG_KEYS = {
     "rerank",
     "chunk_chars",
     "chunk_overlap",
+    "eltern_seite",
+    "sprache",
     "hybrid",
     "fts_stem",
     "hyde_gewicht",
@@ -203,6 +207,8 @@ def _rag(name: str, entry: Any, filename: str) -> Rag:
         rerank=bool(entry.get("rerank", True)),
         chunk_chars=int(entry.get("chunk_chars", 600)),
         chunk_overlap=int(entry.get("chunk_overlap", 100)),
+        eltern_seite=bool(entry.get("eltern_seite", False)),
+        sprache=None if entry.get("sprache") is None else str(entry["sprache"]),
         hybrid=bool(entry.get("hybrid", True)),
         fts_stem=bool(entry.get("fts_stem", False)),
         hyde_gewicht=float(entry.get("hyde_gewicht", 0.5)),

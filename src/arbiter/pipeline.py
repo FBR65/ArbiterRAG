@@ -122,7 +122,12 @@ class Pipeline:
         self.gate_logprobs: Callable[[str, str], dict[str, float]] | None = None
 
     def index(self) -> IndexReport:
-        loaded = load_corpus(self.rag.corpus_path, self.rag.extensions, ocr=self._ocr_hook())
+        loaded = load_corpus(
+            self.rag.corpus_path,
+            self.rag.extensions,
+            ocr=self._ocr_hook(),
+            sprache=self.rag.sprache,
+        )
         report = IndexReport(
             files=len({doc.quelle for doc in loaded.documents}),
             skipped_files=loaded.skipped_files,
@@ -156,6 +161,7 @@ class Pipeline:
                         ocr=document.ocr,
                         ocr_paddle=document.ocr_paddle,
                         ocr_ueberlappung=document.ocr_ueberlappung,
+                        eltern=document.text if self.rag.eltern_seite else inhalt,
                     )
                 )
                 texts.append(inhalt)
@@ -220,7 +226,9 @@ class Pipeline:
         passages = [
             Passage(
                 id=chunk_id,
-                text=hits[chunk_id].text,
+                text=(hits[chunk_id].eltern or hits[chunk_id].text)
+                if self.rag.eltern_seite
+                else hits[chunk_id].text,
                 quelle=hits[chunk_id].quelle,
                 seite=hits[chunk_id].seite,
                 rrf_rank=rank,
@@ -229,6 +237,18 @@ class Pipeline:
             for rank, (chunk_id, score) in enumerate(fused, start=1)
             if chunk_id in hits
         ]
+
+        if self.rag.eltern_seite:
+            # Several spans of one page share the same parent text; keep the best rank.
+            gesehen: set[tuple[str, int | None]] = set()
+            eindeutig: list[Passage] = []
+            for passage in passages:
+                schluessel = (passage.quelle, passage.seite)
+                if schluessel in gesehen:
+                    continue
+                gesehen.add(schluessel)
+                eindeutig.append(passage)
+            passages = eindeutig
 
         rerank_status = "aus"
         if self.rag.rerank and passages:

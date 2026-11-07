@@ -40,8 +40,9 @@ def build_claim_prompt(claim: str, passage: str) -> tuple[str, str]:
     system = (
         "Du prüfst eine Aussage gegen einen Textausschnitt. Antworte mit genau einem "
         "Wort: ja oder nein. Antworte mit ja, wenn die Aussage sinngemäß im "
-        "Textausschnitt steht — auch in anderen Worten. Antworte mit nein, wenn der "
-        "Ausschnitt die Aussage nicht hergibt oder ihr widerspricht."
+        "Textausschnitt steht — auch in anderen Worten und in einer anderen Sprache. "
+        "Prüfe den Inhalt, nicht die Wortwahl. Antworte mit nein, wenn der Ausschnitt "
+        "die Aussage nicht hergibt oder ihr widerspricht."
     )
     return system, f"Aussage: {claim}\n\nTextausschnitt: {passage}"
 

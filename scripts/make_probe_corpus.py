@@ -38,10 +38,7 @@ def make_pdf(path: Path, pages: list[str]) -> None:
     out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n"
     for offset in offsets:
         out += f"{offset:010d} 00000 n \n"
-    out += (
-        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
-        f"startxref\n{xref}\n%%EOF\n"
-    )
+    out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n"
     path.write_bytes(out.encode("latin-1"))
 
 

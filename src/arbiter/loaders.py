@@ -1,13 +1,14 @@
-"""Corpus loading (spec B1, B2, B5).
+"""Corpus loading (spec B1, B2, B5, B8).
 
-PDF pages without a text layer are counted and reported, never fatal. A file
-that yields no text at all is skipped with a warning so one broken document
-cannot stop an index run.
+PDF pages without a text layer are offered to an optional OCR hook. The hook
+returns the text to index plus the second model's reading; a hook that raises
+is reported and the page stays skipped. One broken document never stops a run.
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -20,10 +21,25 @@ logging.getLogger("pypdf").setLevel(logging.ERROR)
 
 
 @dataclass(frozen=True)
+class OcrPage:
+    """One OCR result: the indexed text plus the second model's reading."""
+
+    text: str
+    vergleich: str
+    ueberlappung: float
+
+
+OcrHook = Callable[[Path, int], OcrPage]
+
+
+@dataclass(frozen=True)
 class Document:
     quelle: str
     seite: int | None
     text: str
+    ocr: bool = False
+    ocr_paddle: str = ""
+    ocr_ueberlappung: float = 0.0
 
 
 @dataclass
@@ -34,7 +50,11 @@ class LoadResult:
     textless_pages: int = 0
 
 
-def load_corpus(root: Path, extensions: tuple[str, ...]) -> LoadResult:
+def load_corpus(
+    root: Path,
+    extensions: tuple[str, ...],
+    ocr: OcrHook | None = None,
+) -> LoadResult:
     """Read every configured file under ``root``, recursively."""
     result = LoadResult()
     if not root.is_dir():
@@ -47,13 +67,13 @@ def load_corpus(root: Path, extensions: tuple[str, ...]) -> LoadResult:
             continue
         relative = path.relative_to(root).as_posix()
         if path.suffix.lower() == ".pdf":
-            _load_pdf(path, relative, result)
+            _load_pdf(path, relative, result, ocr)
         else:
             _load_text(path, relative, result)
     return result
 
 
-def _load_pdf(path: Path, relative: str, result: LoadResult) -> None:
+def _load_pdf(path: Path, relative: str, result: LoadResult, ocr: OcrHook | None) -> None:
     try:
         reader = pypdf.PdfReader(str(path))
         pages_before = len(result.documents)
@@ -64,15 +84,47 @@ def _load_pdf(path: Path, relative: str, result: LoadResult) -> None:
                 result.warnings.append(f"{relative}, Seite {number}: nicht lesbar ({exc})")
                 text = ""
             if not text.strip():
-                result.textless_pages += 1
+                document = _ocr_page(path, relative, number, result, ocr)
+                if document is None:
+                    result.textless_pages += 1
+                    continue
+                result.documents.append(document)
                 continue
             result.documents.append(Document(quelle=relative, seite=number, text=text))
         if len(result.documents) == pages_before:
             result.skipped_files += 1
-            result.warnings.append(f"{relative}: keine Textebene, übersprungen")
+            if ocr is None:
+                result.warnings.append(f"{relative}: keine Textebene, übersprungen")
     except Exception as exc:
         result.skipped_files += 1
         result.warnings.append(f"{relative}: PDF nicht lesbar ({exc})")
+
+
+def _ocr_page(
+    path: Path,
+    relative: str,
+    number: int,
+    result: LoadResult,
+    ocr: OcrHook | None,
+) -> Document | None:
+    if ocr is None:
+        return None
+    try:
+        page = ocr(path, number)
+    except Exception as exc:
+        result.warnings.append(f"{relative}, Seite {number}: OCR fehlgeschlagen ({exc})")
+        return None
+    if not page.text.strip():
+        result.warnings.append(f"{relative}, Seite {number}: OCR lieferte keinen Text")
+        return None
+    return Document(
+        quelle=relative,
+        seite=number,
+        text=page.text,
+        ocr=True,
+        ocr_paddle=page.vergleich,
+        ocr_ueberlappung=page.ueberlappung,
+    )
 
 
 def _load_text(path: Path, relative: str, result: LoadResult) -> None:

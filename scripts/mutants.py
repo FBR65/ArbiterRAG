@@ -68,6 +68,24 @@ MUTANTS = [
         "if len(question) > MAX_FRAGE_ZEICHEN:",
         "if len(question) > MAX_FRAGE_ZEICHEN * 10:",
     ),
+    Mutant(
+        "ocr-overlap-divides-by-the-smaller-set",
+        "src/arbiter/ocr.py",
+        "return len(words_left & words_right) / max(len(words_left), len(words_right))",
+        "return len(words_left & words_right) / min(len(words_left), len(words_right))",
+    ),
+    Mutant(
+        "loaders-never-calls-ocr",
+        "src/arbiter/loaders.py",
+        "    if ocr is None:\n        return None\n    try:",
+        "    if True:\n        return None\n    try:",
+    ),
+    Mutant(
+        "store-skips-column-migration",
+        "src/arbiter/store.py",
+        "        if missing:\n            table.add_columns(missing)",
+        "        if False:\n            table.add_columns(missing)",
+    ),
 ]
 
 

@@ -11,17 +11,20 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from arbiter.chunk import chunk_text
 from arbiter.config import Config, Rag
 from arbiter.embedding import HttpEmbedder
 from arbiter.fusion import rrf
-from arbiter.loaders import load_corpus
+from arbiter.loaders import OcrHook, OcrPage, load_corpus
+from arbiter.ocr import VisionOcr, dots_to_text, render_png, word_overlap
 from arbiter.store import Hit, Record, Store
 
-EMBED_DIM = 1024  # bge-m3 dense vectors
 MAX_FRAGE_ZEICHEN = 2000
 EMBED_BATCH = 32
+# PaddleOCR-VL is task-prompted; "OCR:" is the task switch for plain text.
+PADDLE_PROMPT = "OCR:"
 
 
 class QuestionTooLong(Exception):
@@ -35,6 +38,7 @@ class IndexReport:
     changed: int = 0
     skipped_files: int = 0
     textless_pages: int = 0
+    ocr_pages: int = 0
     warnings: list[str] = field(default_factory=list)
 
 
@@ -75,11 +79,12 @@ class Pipeline:
         self.store = Store(config.db_path)
 
     def index(self) -> IndexReport:
-        loaded = load_corpus(self.rag.corpus_path, self.rag.extensions)
+        loaded = load_corpus(self.rag.corpus_path, self.rag.extensions, ocr=self._ocr_hook())
         report = IndexReport(
             files=len({doc.quelle for doc in loaded.documents}),
             skipped_files=loaded.skipped_files,
             textless_pages=loaded.textless_pages,
+            ocr_pages=sum(1 for doc in loaded.documents if doc.ocr),
             warnings=list(loaded.warnings),
         )
         if not loaded.documents:
@@ -99,6 +104,9 @@ class Pipeline:
                         seite=document.seite,
                         hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
                         vector=[],
+                        ocr=document.ocr,
+                        ocr_paddle=document.ocr_paddle,
+                        ocr_ueberlappung=document.ocr_ueberlappung,
                     )
                 )
                 texts.append(text)
@@ -112,6 +120,9 @@ class Pipeline:
                 seite=record.seite,
                 hash=record.hash,
                 vector=vector,
+                ocr=record.ocr,
+                ocr_paddle=record.ocr_paddle,
+                ocr_ueberlappung=record.ocr_ueberlappung,
             )
             for record, vector in zip(records, vectors, strict=True)
         ]
@@ -154,6 +165,27 @@ class Pipeline:
             if chunk_id in by_id
         ]
         return SearchResult(question=question, passages=passages)
+
+    def _ocr_hook(self) -> OcrHook | None:
+        """Both OCR models run on the same rendering; dots-mocr supplies the text."""
+        if not self.rag.ocr:
+            return None
+        backends = self.config.backends
+        dots = VisionOcr(backends.base_url, backends.ocr_dots_model)
+        paddle = VisionOcr(backends.base_url, backends.ocr_paddle_model)
+        dpi = self.rag.ocr_dpi
+
+        def hook(path: Path, page_number: int) -> OcrPage:
+            png = render_png(path, page_number, dpi)
+            indexed = dots_to_text(dots.text_from_png(png))
+            zweitmeinung = paddle.text_from_png(png, prompt=PADDLE_PROMPT)
+            return OcrPage(
+                text=indexed,
+                vergleich=zweitmeinung,
+                ueberlappung=word_overlap(indexed, zweitmeinung),
+            )
+
+        return hook
 
     def _embed_all(self, texts: Sequence[str]) -> list[list[float]]:
         vectors: list[list[float]] = []

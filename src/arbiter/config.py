@@ -27,6 +27,8 @@ class Backends:
     rerank_model: str
     chat_model: str
     laya_model: str
+    ocr_dots_model: str = ""
+    ocr_paddle_model: str = ""
 
 
 @dataclass(frozen=True)
@@ -42,6 +44,8 @@ class Rag:
     laya_schwelle: float = 0.5
     hyde: bool = True
     hyde_max_chars: int = 800
+    ocr: bool = False
+    ocr_dpi: int = 200
 
 
 @dataclass(frozen=True)
@@ -52,7 +56,15 @@ class Config:
 
 
 _TOP_KEYS = {"db_path", "backends", "rags"}
-_BACKEND_KEYS = {"base_url", "embed_model", "rerank_model", "chat_model", "laya_model"}
+_BACKEND_KEYS = {
+    "base_url",
+    "embed_model",
+    "rerank_model",
+    "chat_model",
+    "laya_model",
+    "ocr_dots_model",
+    "ocr_paddle_model",
+}
 _RAG_KEYS = {
     "description",
     "corpus_path",
@@ -64,8 +76,16 @@ _RAG_KEYS = {
     "laya_schwelle",
     "hyde",
     "hyde_max_chars",
+    "ocr",
+    "ocr_dpi",
 }
-_REQUIRED_BACKENDS = _BACKEND_KEYS
+_REQUIRED_BACKENDS = {
+    "base_url",
+    "embed_model",
+    "rerank_model",
+    "chat_model",
+    "laya_model",
+}
 _REQUIRED_RAG = {"description", "corpus_path", "extensions"}
 
 
@@ -103,6 +123,8 @@ def load_config(path: Path, environ: Mapping[str, str]) -> Config:
         rerank_model=str(backends_raw["rerank_model"]),
         chat_model=str(backends_raw["chat_model"]),
         laya_model=str(backends_raw["laya_model"]),
+        ocr_dots_model=str(backends_raw.get("ocr_dots_model", "")),
+        ocr_paddle_model=str(backends_raw.get("ocr_paddle_model", "")),
     )
 
     rags_raw = data["rags"]
@@ -112,6 +134,13 @@ def load_config(path: Path, environ: Mapping[str, str]) -> Config:
     rags: dict[str, Rag] = {}
     for name, entry in rags_raw.items():
         rags[str(name)] = _rag(str(name), entry, path.name)
+
+    for rag in rags.values():
+        if rag.ocr and not (backends.ocr_dots_model and backends.ocr_paddle_model):
+            raise ConfigError(
+                f"{path.name}: rag '{rag.name}' hat ocr: true, aber "
+                "backends.ocr_dots_model und backends.ocr_paddle_model fehlen"
+            )
 
     return Config(
         db_path=Path(str(data["db_path"])),
@@ -150,6 +179,8 @@ def _rag(name: str, entry: Any, filename: str) -> Rag:
         laya_schwelle=float(entry.get("laya_schwelle", 0.5)),
         hyde=bool(entry.get("hyde", True)),
         hyde_max_chars=int(entry.get("hyde_max_chars", 800)),
+        ocr=bool(entry.get("ocr", False)),
+        ocr_dpi=int(entry.get("ocr_dpi", 200)),
     )
 
 

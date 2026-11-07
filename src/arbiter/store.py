@@ -28,6 +28,9 @@ class Record:
     seite: int | None
     hash: str
     vector: list[float]
+    ocr: bool = False
+    ocr_paddle: str = ""
+    ocr_ueberlappung: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -37,6 +40,9 @@ class Hit:
     quelle: str
     seite: int | None
     score: float
+    ocr: bool = False
+    ocr_paddle: str = ""
+    ocr_ueberlappung: float = 0.0
 
 
 class Store:
@@ -108,6 +114,7 @@ class Store:
                 quelle=row["quelle"],
                 seite=row["seite"],
                 score=1.0 - float(row["_distance"]),
+                **_ocr_fields(row),
             )
             for row in rows
         ]
@@ -129,6 +136,7 @@ class Store:
                 quelle=row["quelle"],
                 seite=row["seite"],
                 score=float(row.get("_score", 0.0)),
+                **_ocr_fields(row),
             )
             for row in rows
         ]
@@ -142,11 +150,32 @@ class Store:
                 f"Kein Index für '{rag}' (vorhanden: {known}). Erst 'arbiter index {rag}'."
             ) from exc
 
+    def _ensure_ocr_columns(self, table: Any) -> None:
+        """Add the OCR columns to a table written by an older version.
+
+        Without this, every schema addition would force a full re-index and the
+        upsert would fail with "'ocr' does not exist in table schema".
+        """
+        present = set(table.schema.names)
+        missing = {
+            name: literal
+            for name, literal in (
+                ("ocr", "false"),
+                ("ocr_paddle", "''"),
+                ("ocr_ueberlappung", "0.0"),
+            )
+            if name not in present
+        }
+        if missing:
+            table.add_columns(missing)
+
     def _table_or_create(self, rag: str, dim: int) -> Any:
         try:
-            return self._db.open_table(rag)
+            table = self._db.open_table(rag)
         except Exception:
             return self._db.create_table(rag, schema=self._schema(dim))
+        self._ensure_ocr_columns(table)
+        return table
 
     def _schema(self, dim: int) -> pa.Schema:
         return pa.schema(
@@ -157,6 +186,9 @@ class Store:
                 pa.field("seite", pa.int32()),
                 pa.field("hash", pa.string()),
                 pa.field("vector", pa.list_(pa.float32(), dim)),
+                pa.field("ocr", pa.bool_()),
+                pa.field("ocr_paddle", pa.string()),
+                pa.field("ocr_ueberlappung", pa.float64()),
             ]
         )
 
@@ -165,6 +197,15 @@ class Store:
             return
         quoted = ", ".join("'" + rid.replace("'", "''") + "'" for rid in ids)
         table.delete(f"id IN ({quoted})")
+
+
+def _ocr_fields(row: dict[str, Any]) -> dict[str, Any]:
+    """Rows written before the OCR columns existed simply have no values."""
+    return {
+        "ocr": bool(row.get("ocr", False)),
+        "ocr_paddle": str(row.get("ocr_paddle", "") or ""),
+        "ocr_ueberlappung": float(row.get("ocr_ueberlappung", 0.0) or 0.0),
+    }
 
 
 def _table_name(entry: object) -> str:
@@ -184,4 +225,7 @@ def _row(record: Record) -> dict[str, object]:
         "seite": -1 if record.seite is None else record.seite,
         "hash": record.hash,
         "vector": record.vector,
+        "ocr": record.ocr,
+        "ocr_paddle": record.ocr_paddle,
+        "ocr_ueberlappung": record.ocr_ueberlappung,
     }

@@ -69,7 +69,7 @@ def _index(cfg: Config, rag: Rag, embedder: HttpEmbedder | None) -> int:
     print(
         f"{report.files} Dateien, {report.chunks} Abschnitte, "
         f"{report.changed} neu oder geändert, {report.skipped_files} übersprungen, "
-        f"{report.textless_pages} Seiten ohne Text"
+        f"{report.textless_pages} Seiten ohne Text, {report.ocr_pages} Seiten per OCR"
     )
     for warning in report.warnings:
         print(f"  Hinweis: {warning}", file=sys.stderr)

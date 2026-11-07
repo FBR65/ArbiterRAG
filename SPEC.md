@@ -95,6 +95,21 @@ Jedes Verhalten wird als Test geschrieben, rot gesehen, dann grün gemacht.
   `<quelle>#<seite>#<laufende Nummer>`.
 - **B7** Nach der Indexierung existiert ein Volltextindex auf `text`. Eine Suche
   ohne diesen Index ist ein Fehler, kein leeres Ergebnis.
+- **B8** Eine PDF-Seite ohne Textebene wird bei `ocr: true` mit `ocr_dpi`
+  (Default 200) gerendert und an **beide** OCR-Modelle geschickt. `dots-mocr`
+  liefert den Text, der indiziert wird: seine Layout-JSON wird in Lesereihenfolge
+  zu Text reduziert, ohne Übersetzung, Bilder ohne Text. `paddleocr-vl` läuft mit
+  dem Aufgabenschalter `OCR:` auf derselben Seite; seine Ausgabe steht als
+  `ocr_paddle` im Datensatz, die Wortüberlappung beider Lesungen als
+  `ocr_ueberlappung`. Die beiden Texte werden **nicht** gemischt (D13).
+- **B9** Scheitert ein OCR-Modell, bleibt die Seite übersprungen und der Grund
+  steht als Warnung im Bericht. Der Lauf bricht nicht ab.
+- **B10** Eine Tabelle aus einer älteren Version wird beim Schreiben um fehlende
+  Spalten ergänzt, statt den Lauf mit einem Schema-Fehler zu beenden.
+
+> Gemessene Grenze (2026-11-07, `PATCHT-Trennblatt.pdf`): `dots-mocr` liest bei
+> 100, 150 und 200 dpi identisch (88 Zeichen), bei 250 und 300 dpi antwortet der
+> Server `HTTP 500 failed to process mtmd chunk`. Deshalb Default 200, nicht 300.
 
 ### C. Suche und Fusion
 
@@ -212,7 +227,7 @@ Angenommen mit dieser SPEC:
 | Versionierung | `git init`, Commit bei Freigabe und je Grün/Refactor-Stufe |
 | Test | `pytest`, `pytest-cov`, `hypothesis`; Marker `integration` standardmäßig ausgeschlossen |
 | Statik | `ruff` (Lint + Format), `mypy` |
-| Laufzeit-Abhängigkeiten | `lancedb` (Store), `pyarrow` (von LanceDB verlangt), `numpy` (Vektorrechnung), `httpx` (HTTP-Backends), `pyyaml` (Konfiguration), `pypdf` (PDF-Textebene, BSD-3) |
+| Laufzeit-Abhängigkeiten | `lancedb` (Store), `pyarrow` (von LanceDB verlangt), `numpy` (Vektorrechnung), `httpx` (HTTP-Backends), `pyyaml` (Konfiguration), `pypdf` (PDF-Textebene, BSD-3), `pypdfium2` (Seiten rendern, BSD-3/Apache-2.0), `pillow` (PNG-Kodierung für die OCR, HPND) |
 | Test-Abhängigkeiten | `pytest`, `pytest-cov`, `hypothesis`, `ruff`, `mypy` |
 | Modell-Abhängigkeiten | `bge-m3` (MIT), `bge-reranker-v2-m3` (Apache-2.0), `laya` multilingual (Apache-2.0) — Lizenzen am 2026-11-07 über die Registry geprüft. HyDE- und Antwortmodell aus llama-swap (D4/D8) |
 | Nicht installiert | kein torch, kein FlagEmbedding im Client |

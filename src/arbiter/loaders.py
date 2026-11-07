@@ -7,10 +7,16 @@ cannot stop an index run.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pypdf
+
+# pypdf warns about fonts it cannot fully decode (one block per font object,
+# hundreds of lines on a print PDF). The text still comes out; the noise hides
+# the run's own report.
+logging.getLogger("pypdf").setLevel(logging.ERROR)
 
 
 @dataclass(frozen=True)

@@ -56,9 +56,11 @@ Antwort". Laya kann es. ArbiterRAG trennt Ordnen von Urteilen.
 
 | ID | Frage | Optionen | Empfehlung |
 |---|---|---|---|
-| D10 | PDF **ohne Textebene** (Scan) | (a) überspringen, Seiten zählen und melden (b) OCR über llama-swap (`dots-mocr`) als Fallback (c) Abbruch | **(a)** in Stufe 1, Zahl der leeren Seiten berichten; (b) als eigene Stufe, weil OCR die Laufzeit um Größenordnungen erhöht |
-| D11 | Reranker-Eintrag ist defekt: `-m` zeigt auf ein safetensors-Verzeichnis, llama-server kann das nicht laden (`upstream command exited prematurely`). Kein GGUF vorhanden. | (a) GGUF jetzt laden und Eintrag reparieren (b) in Stufe 3, wenn der Reranker gebraucht wird (c) anderes Reranker-Modell | **(b)** — Stufe 1 braucht keinen Reranker |
-| D12 | Pfad des PDF-Korpus für den ersten echten Lauf | Pfad | — |
+| D10 | PDF **ohne Textebene** (Scan) | **b** — OCR über llama-swap, Modelle `dots-mocr` **und** `paddleocr-vl` | Verhalten B8; Kombination offen (D13) |
+| D11 | Reranker-Eintrag ist defekt: `-m` zeigt auf ein safetensors-Verzeichnis, llama-server kann das nicht laden (`upstream command exited prematurely`). Kein GGUF vorhanden. | **reparieren** | erledigt 2026-11-07: GGUF `Q8_0` (gpustack, Apache-2.0) geladen, Eintrag mit `--reranking` versehen, `/v1/rerank` antwortet |
+| D12 | Pfad des PDF-Korpus für den ersten echten Lauf | **`/home/speedy/Downloads`** | erledigt: 9 Dateien, 1053 Abschnitte, 1 Seite ohne Textebene |
+| D13 | Wie werden die **zwei** OCR-Ausgaben kombiniert? | (a) `dots-mocr` liefert den Indextext, `paddleocr-vl` läuft mit und wird je Seite als Vergleichsfeld gespeichert; Abweichung als Wortüberlappung berichtet (b) umgekehrt (c) beide als getrennte Abschnitte indexieren | **(a)** — eine Passage, ein Text; die zweite Ausgabe bleibt als Beleg erhalten, ohne den Index zu verdoppeln |
+| D14 | Darf ich den OCR-Prompt aus `~/Dokumente/dev/U-OCR_test/` übernehmen (liegt außerhalb des Arbeitsverzeichnisses, N6) | (a) ja, Prompt übernehmen (b) eigener Prompt (c) Prompt nennen lassen | **(a)** — der Prompt ist das Ergebnis einer früheren Messung; ein eigener wäre geraten |
 
 ## 4. Verhalten (Abnahmekriterien)
 

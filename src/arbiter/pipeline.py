@@ -369,9 +369,18 @@ class Pipeline:
         position = {zulassung.passage.id: index for index, zulassung in enumerate(ordered)}
         return befund.a if position.get(befund.a, 0) > position.get(befund.b, 0) else befund.b
 
-    def ask(self, question: str, hyde: bool | None = None) -> Antwort:
-        """Search, decide, answer — in that order (spec F3, G)."""
-        result = self.search(question, hyde=hyde)
+    def ask(
+        self,
+        question: str,
+        hyde: bool | None = None,
+        vorgabe: SearchResult | None = None,
+    ) -> Antwort:
+        """Search, decide, answer — in that order (spec F3, G).
+
+        ``vorgabe`` reuses an already computed search result, so a caller that
+        measured the search does not pay for a second HyDE call.
+        """
+        result = vorgabe if vorgabe is not None else self.search(question, hyde=hyde)
         try:
             entscheidung = self.bewerte(result)
         except DecisionError as exc:

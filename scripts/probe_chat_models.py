@@ -31,7 +31,7 @@ def main() -> None:
                     "max_tokens": 160,
                     "messages": [{"role": "user", "content": PROMPT}],
                 },
-                timeout=420.0,
+                timeout=900.0,
             )
         except httpx.HTTPError as exc:
             print(f"{model}: FEHLER nach {time.monotonic() - started:.1f}s — {exc}")

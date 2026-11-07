@@ -72,16 +72,31 @@ def ndcg_at(passages: list[Passage], gold: GoldFrage, k: int) -> float:
     return dcg  # the ideal DCG for one relevant document at rank 1 is 1.0
 
 
-def _stage(pipeline: Pipeline, goldset: list[GoldFrage], name: str, mit_antwort: bool) -> Stufe:
+def _stage(
+    pipeline: Pipeline,
+    goldset: list[GoldFrage],
+    name: str,
+    mit_antwort: bool,
+    fortschritt: bool = True,
+) -> Stufe:
     stufe = Stufe(name=name, fragen=len(goldset))
     recall_sum = 0.0
     ndcg_sum = 0.0
-    for gold in goldset:
-        antwort = pipeline.ask(gold.frage) if mit_antwort else None
+    for nummer, gold in enumerate(goldset, start=1):
         result = pipeline.search(gold.frage)
         recall_sum += recall_at(result.passages, gold, 10)
         ndcg_sum += ndcg_at(result.passages, gold, 10)
         stufe.warnungen.extend(result.warnungen)
+
+        antwort = pipeline.ask(gold.frage, vorgabe=result) if mit_antwort else None
+        if fortschritt:
+            marker = ""
+            if antwort is not None:
+                marker = " → Antwort" if antwort.text else f" → keine Antwort ({antwort.grund})"
+            print(
+                f"  {name} {nummer}/{len(goldset)}: {gold.frage[:58]}{marker}",
+                flush=True,
+            )
 
         if antwort is None:
             continue

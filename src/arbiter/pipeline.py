@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from arbiter.chunk import chunk_text
@@ -20,6 +20,7 @@ from arbiter.fusion import rrf_many
 from arbiter.hyde import ChatClient, build_prompt, truncate
 from arbiter.loaders import OcrHook, OcrPage, load_corpus
 from arbiter.ocr import VisionOcr, dots_to_text, render_png, word_overlap
+from arbiter.rerank import RerankClient
 from arbiter.store import Hit, Record, Store
 
 MAX_FRAGE_ZEICHEN = 2000
@@ -51,8 +52,7 @@ class Passage:
     seite: int | None
     rrf_rank: int
     rrf_score: float
-    dense_rank: int | None = None
-    fts_rank: int | None = None
+    rerank_score: float | None = None
 
 
 @dataclass(frozen=True)
@@ -82,6 +82,8 @@ class Pipeline:
         # Callable(question, description) -> hypothetical answer document.
         # Left empty here so tests can inject one and the real client stays lazy.
         self.hyde: Callable[[str, str], str] | None = None
+        # Callable(query, documents) -> one score per document.
+        self.reranker: Callable[[str, list[str]], list[float]] | None = None
 
     def index(self) -> IndexReport:
         loaded = load_corpus(self.rag.corpus_path, self.rag.extensions, ocr=self._ocr_hook())
@@ -175,8 +177,31 @@ class Pipeline:
             for rank, (chunk_id, score) in enumerate(fused, start=1)
             if chunk_id in hits
         ]
+
+        rerank_status = "aus"
+        if self.rag.rerank and passages:
+            try:
+                scores = self._rerank_scores(question, [passage.text for passage in passages])
+            except Exception as exc:
+                warnungen.append(f"Reranker fehlgeschlagen, RRF-Reihenfolge gilt: {exc}")
+                rerank_status = "ausgefallen"
+            else:
+                rerank_status = "aktiv"
+                ranked = sorted(
+                    zip(passages, scores, strict=True),
+                    key=lambda pair: (-pair[1], pair[0].rrf_rank),
+                )
+                passages = [
+                    replace(passage, rerank_score=score)
+                    for passage, score in ranked[: self.rag.rerank_top_n]
+                ]
+
         return SearchResult(
-            question=question, passages=passages, hyde_text=hyde_text, warnungen=warnungen
+            question=question,
+            passages=passages,
+            hyde_text=hyde_text,
+            rerank=rerank_status,
+            warnungen=warnungen,
         )
 
     def _rank_lists(self, text: str) -> tuple[list[str], list[str], dict[str, Hit]]:
@@ -186,6 +211,12 @@ class Pipeline:
         fts = self.store.search_fts(self.rag.name, text, self.rag.top_k_fts)
         hits = {hit.id: hit for hit in reversed(dense + fts)}
         return [hit.id for hit in dense], [hit.id for hit in fts], hits
+
+    def _rerank_scores(self, question: str, documents: list[str]) -> list[float]:
+        if self.reranker is None:
+            client = RerankClient(self.config.backends.base_url, self.config.backends.rerank_model)
+            self.reranker = client.scores
+        return self.reranker(question, documents)
 
     def _hyde_document(self, question: str) -> str:
         """One hypothetical answer document, cut to ``hyde_max_chars``."""

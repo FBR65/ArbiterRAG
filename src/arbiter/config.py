@@ -46,6 +46,7 @@ class Rag:
     hyde_max_chars: int = 800
     ocr: bool = False
     ocr_dpi: int = 200
+    rerank: bool = True
 
 
 @dataclass(frozen=True)
@@ -78,6 +79,7 @@ _RAG_KEYS = {
     "hyde_max_chars",
     "ocr",
     "ocr_dpi",
+    "rerank",
 }
 _REQUIRED_BACKENDS = {
     "base_url",
@@ -181,6 +183,7 @@ def _rag(name: str, entry: Any, filename: str) -> Rag:
         hyde_max_chars=int(entry.get("hyde_max_chars", 800)),
         ocr=bool(entry.get("ocr", False)),
         ocr_dpi=int(entry.get("ocr_dpi", 200)),
+        rerank=bool(entry.get("rerank", True)),
     )
 
 

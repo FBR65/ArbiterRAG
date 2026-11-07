@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pypdf
+import pypdfium2 as pdfium
 
 # pypdf warns about fonts it cannot fully decode (one block per font object,
 # hundreds of lines on a print PDF). The text still comes out; the noise hides
@@ -157,14 +158,8 @@ def _drop_duplicate(
 
 def _load_pdf(path: Path, relative: str, result: LoadResult, ocr: OcrHook | None) -> None:
     try:
-        reader = pypdf.PdfReader(str(path))
         pages_before = len(result.documents)
-        for number, page in enumerate(reader.pages, start=1):
-            try:
-                text = page.extract_text() or ""
-            except Exception as exc:
-                result.warnings.append(f"{relative}, Seite {number}: nicht lesbar ({exc})")
-                text = ""
+        for number, text in enumerate(_pdf_pages(path, relative, result), start=1):
             if not text.strip():
                 document = _ocr_page(path, relative, number, result, ocr)
                 if document is None:
@@ -180,6 +175,44 @@ def _load_pdf(path: Path, relative: str, result: LoadResult, ocr: OcrHook | None
     except Exception as exc:
         result.skipped_files += 1
         result.warnings.append(f"{relative}: PDF nicht lesbar ({exc})")
+
+
+def _pdf_pages(path: Path, relative: str, result: LoadResult) -> list[str]:
+    """Page texts of a PDF, layout-aware where possible.
+
+    ``pypdf`` splits words at a line break ("Barriere freiheit", "ge - prüft"), which
+    costs recall and makes the sentence check reject correct statements. ``pypdfium2``
+    keeps the word whole but inserts U+FFFE at the break; removing that character
+    gives "Barrierefreiheit". Fallback stays ``pypdf`` so a broken file never stops a run.
+    """
+    try:
+        pdf = pdfium.PdfDocument(str(path))
+    except Exception:
+        return _pdf_pages_pypdf(path, relative, result)
+    try:
+        seiten: list[str] = []
+        for index in range(len(pdf)):
+            try:
+                roh = pdf[index].get_textpage().get_text_range()
+            except Exception as exc:
+                result.warnings.append(f"{relative}, Seite {index + 1}: nicht lesbar ({exc})")
+                roh = ""
+            seiten.append(roh.replace("\ufffe", "").replace("\u00ad", ""))
+        return seiten
+    finally:
+        pdf.close()
+
+
+def _pdf_pages_pypdf(path: Path, relative: str, result: LoadResult) -> list[str]:
+    reader = pypdf.PdfReader(str(path))
+    seiten: list[str] = []
+    for number, page in enumerate(reader.pages, start=1):
+        try:
+            seiten.append(page.extract_text() or "")
+        except Exception as exc:
+            result.warnings.append(f"{relative}, Seite {number}: nicht lesbar ({exc})")
+            seiten.append("")
+    return seiten
 
 
 def _ocr_page(

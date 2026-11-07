@@ -337,6 +337,50 @@ kein Sprachproblem mehr, sondern eine zu enge Formulierung der Prüffrage. Sie z
 kalibrieren ist der nächste Hebel — und der einzige, der die Zitate senken kann, ohne
 die Null bei den Falschantworten aufzugeben.
 
+## J — Abschlusstest gegen „iX Developer 2026 – Testing" (156 Seiten)
+
+Acht Fragen, deren Antworten vorher am Volltext geprüft wurden — sechs beantwortbar, zwei
+nicht. `scripts/abschlusstest_ix.py`.
+
+| # | Frage | Erwartet (Seite) | Ergebnis |
+|---|---|---|---|
+| 1 | Drei Schritte der Golden-Master-Modernisierung | S. 112 | **Zitat** von S. 111, nennt die Schritte nicht |
+| 2 | Wozu Spec-driven Development bei KI-Agenten | S. 101 | **falscher Artikel** (S. 10/149, „Specman") |
+| 3 | Woran erkennt der Test den Button | S. 74 (getByRole) | **falsch**: „getByText" [S. 73] |
+| 4 | Was regelt WCAG 2.4.3 | S. 39 (Fokus-Reihenfolge) | **keine Antwort**, obwohl vorhanden |
+| 5 | Was macht ein KI-Agent bei rotem Test | S. 100 (löscht Test / schwächt Assertion) | **andere Aussage** („macht die Änderung rückgängig", S. 102) |
+| 6 | Berufsbezeichnung der Tester | S. 128 (Quality Engineer) | **richtig**, Quelle S. 128 |
+| 7 | Teilnahmegebühr iX-Konferenz | nicht im Heft | **richtig abgelehnt** |
+| 8 | Playwright-Mindestversion | nicht im Heft | **richtig abgelehnt** |
+
+**Drei von acht bestanden. Der Test ist nicht bestanden.** Vier Antworten sind falsch
+oder beantworten die Frage nicht, eine verweigert, obwohl die Antwort im Heft steht. Zwei
+der falschen Antworten tragen eine Quellenangabe — das ist der Fall, den das Ziel
+„keine Halluzination" ausschließen soll. Die Satzprüfung hat sie durchgelassen.
+
+**Was dabei gefunden wurde.** Die Textgewinnung mit `pypdf` zerhackt Wörter am
+Zeilenende: auf Seite 74 allein 41 Trennstellen, „Barriere freiheit", „ge - prüft",
+„But- ton". Das kostet Treffer und lässt die Satzprüfung richtige Aussagen verwerfen.
+Der Loader nutzt jetzt `pypdfium2` (BSD/Apache-2.0, schon Abhängigkeit für das Rendern),
+entfernt dessen Umbruchzeichen U+FFFE und bekommt „Barrierefreiheit", „gefunden",
+„Eingabefeld"; `pypdf` bleibt als Rückfall.
+
+Das verbesserte die Wortintegrität messbar, den Abschlusstest aber nur bei Frage 8 —
+die inhaltlichen Fehler bleiben.
+
+**Was das für das Ziel heißt.** Der Korpus ist jetzt deutsch, das Gate entscheidet
+immer, die Antwort wird satzweise geprüft — und trotzdem kommen falsche Aussagen mit
+Quelle durch. Damit ist die Kette für das Ziel „keine Halluzination" **nicht belegt**.
+Zwei Ursachen, beide gemessen:
+
+1. **Suche:** Bei 156 Seiten mit vielen Artikeln zum selben Thema zieht die Suche den
+   falschen Artikel. 600-Zeichen-Fenster über Seitengrenzen kennen keine
+   Artikelstruktur. Ein Chunking entlang der Überschriften (Artikel/Titel) ist der
+   nächste Schritt, nicht eine andere Fenstergröße — die ist bereits gemessen.
+2. **Satzprüfung:** Sie akzeptiert falsche Aussagen (Frage 2 und 5) und verwirft
+   richtige (Frage 4). Ihre Fehlerrate ist unbekannt; sie ist der einzige Baustein ohne
+   Kalibrierung.
+
 ## Endstand der Kette
 
 | Stufe | Recall@10 | nDCG@10 | Beleg ok (von 23) |

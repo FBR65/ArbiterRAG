@@ -281,8 +281,6 @@ Schwelle 0,5 eine gemessene Zahl und keine Annahme.
 
 ## Endstand der Kette
 
-## Endstand der Kette
-
 | Stufe | Recall@10 | nDCG@10 | Beleg ok (von 23) |
 |---|---|---|---|
 | nur Fusion | 0,71 | 0,65 | – |

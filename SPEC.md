@@ -59,8 +59,13 @@ Antwort". Laya kann es. ArbiterRAG trennt Ordnen von Urteilen.
 | D10 | PDF **ohne Textebene** (Scan) | **b** — OCR über llama-swap, Modelle `dots-mocr` **und** `paddleocr-vl` | Verhalten B8; Kombination offen (D13) |
 | D11 | Reranker-Eintrag ist defekt: `-m` zeigt auf ein safetensors-Verzeichnis, llama-server kann das nicht laden (`upstream command exited prematurely`). Kein GGUF vorhanden. | **reparieren** | erledigt 2026-11-07: GGUF `Q8_0` (gpustack, Apache-2.0) geladen, Eintrag mit `--reranking` versehen, `/v1/rerank` antwortet |
 | D12 | Pfad des PDF-Korpus für den ersten echten Lauf | **`/home/speedy/Downloads`** | erledigt: 9 Dateien, 1053 Abschnitte, 1 Seite ohne Textebene |
-| D13 | Wie werden die **zwei** OCR-Ausgaben kombiniert? | (a) `dots-mocr` liefert den Indextext, `paddleocr-vl` läuft mit und wird je Seite als Vergleichsfeld gespeichert; Abweichung als Wortüberlappung berichtet (b) umgekehrt (c) beide als getrennte Abschnitte indexieren | **(a)** — eine Passage, ein Text; die zweite Ausgabe bleibt als Beleg erhalten, ohne den Index zu verdoppeln |
-| D14 | Darf ich den OCR-Prompt aus `~/Dokumente/dev/U-OCR_test/` übernehmen (liegt außerhalb des Arbeitsverzeichnisses, N6) | (a) ja, Prompt übernehmen (b) eigener Prompt (c) Prompt nennen lassen | **(a)** — der Prompt ist das Ergebnis einer früheren Messung; ein eigener wäre geraten |
+| D13 | Wie werden die **zwei** OCR-Ausgaben kombiniert? | **a** | umgesetzt: dots-Text indiziert, paddle als Vergleichsfeld, Überlappung berichtet |
+| D14 | Darf ich den OCR-Prompt aus `~/Dokumente/dev/U-OCR_test/` übernehmen (liegt außerhalb des Arbeitsverzeichnisses, N6) | **a** | Quelle existiert nicht mehr; Prompt aus der Model Card, siehe EVIDENCE |
+| D15 | Umfang der Endpunkte | **b** (plus `/ask` nach Stufe 5) | umgesetzt: `health`, `rags`, `search`, `ask`, `index` |
+| D16 | Indexierung als Auftrag | **b** | umgesetzt: `202` + `job_id`, Status über `GET /index/{job_id}` |
+| D17 | Zugriffsschutz | **a** | umgesetzt: Bindung über `ARBITER_BIND`, Standard `127.0.0.1` |
+| D18 | Betrieb | **b** | umgesetzt: systemd-User-Service `arbiter-api.service` |
+| D19 | Fehlerformat | **a** | umgesetzt: FastAPIs `{"detail": ...}`, Meldung deutsch |
 
 ## 4. Verhalten (Abnahmekriterien)
 
@@ -146,9 +151,12 @@ Jedes Verhalten wird als Test geschrieben, rot gesehen, dann grün gemacht.
 
 ### F. Laya
 
-- **F1** Für jede Passage der Reranker-Ausgabe wird eine `noul`-Frage gestellt:
-  „Beantwortet dieser Text die Frage?" Alle Fragen gehen in **einem** Request an
-  `/v1/systemone`.
+- **F1** Je Passage der Reranker-Ausgabe wird **ein eigener** Request gestellt:
+  State = Frage + diese eine Passage, Frage `p1` („Beantwortet Auszug [1] die
+  Frage?"). Grund: gemessen am 2026-11-07 beantwortet das kleine multilinguale
+  Modell einen Sammel-State über die ganze Textmenge statt über die Marke — alle
+  P(true) lagen zwischen 0.98 und 0.99. Mit einer Passage je Request trennt es
+  klar (Treffer 0.941 gegenüber Rauschen 0.001–0.028).
 - **F2** Eine Passage gilt als zulässig, wenn `p(true) >= laya_schwelle`
   (Default 0.50).
 - **F3** Ist keine Passage zulässig, liefert das System keine Antwort, sondern
@@ -308,6 +316,10 @@ bleibt die Wahrheit; die API ist ein weiterer dünner Client wie die CLI (H5).
   Exit-Code 1. Kein Start mit halber Konfiguration.
 - **P9** Alle API-Tests laufen über `httpx.ASGITransport` gegen den ASGI-App, ohne
   Server und ohne Netz; Embedder und OCR sind Attrappen.
+- **P10** `POST /ask {rag, frage}` antwortet `200` mit Antwort, Quellen und
+  Entscheidung — auch dann, wenn es keine Antwort gibt: `antwort: null` plus
+  `grund` und `fehler: true|false`. Ein fehlendes Modell ist ein Fehler, keine
+  leere Antwort.
 
 ### Was die API nicht tun darf
 

@@ -40,9 +40,7 @@ def _antwort(text: str | None, grund: str | None = None, fehler: bool = False) -
         entscheidung=Entscheidung(
             beantwortbar=text is not None,
             grund=grund,
-            zulassungen=[],
             auswahl=[],
-            paare=[],
         ),
         fehler=fehler,
     )

@@ -49,7 +49,6 @@ def _config(tmp_path: Path) -> Config:
             embed_model="m",
             rerank_model="r",
             chat_model="c",
-            laya_model="l",
         ),
         rags={
             "k": Rag(

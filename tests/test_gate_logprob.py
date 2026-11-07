@@ -96,7 +96,6 @@ def _pipeline(tmp_path: Path, wahrscheinlichkeiten: list[float]) -> Pipeline:
             embed_model="m",
             rerank_model="r",
             chat_model="c",
-            laya_model="l",
         ),
         rags={
             "k": Rag(
@@ -107,8 +106,7 @@ def _pipeline(tmp_path: Path, wahrscheinlichkeiten: list[float]) -> Pipeline:
                 hyde=False,
                 rerank=False,
                 fuse_top_k=5,
-                laya_schwelle=0.5,
-                gate_modus="logprob",
+                gate_schwelle=0.5,
             )
         },
     )

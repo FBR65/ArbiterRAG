@@ -12,27 +12,14 @@ import hashlib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
 
 from arbiter.answer import Quelle, build_answer_prompt
 from arbiter.chunk import chunk_text
 from arbiter.config import Config, Rag
 from arbiter.decision import (
     DecisionError,
-    SystemOne,
-    build_choice_questions,
-    build_deckung_questions,
     build_ja_nein_prompt,
-    build_noul_state,
-    build_pair_questions,
-    build_questions,
-    build_stuetzen_questions,
-    build_stuetzen_state,
-    build_widerspruch_questions,
-    choice_probabilities,
     ja_wahrscheinlichkeit,
-    level,
-    probability,
 )
 from arbiter.embedding import HttpEmbedder
 from arbiter.fusion import rrf_many
@@ -80,25 +67,13 @@ class Passage:
 class Zulassung:
     passage: Passage
     p: float
-    deckung: float | None = None
-
-
-@dataclass(frozen=True)
-class PaarBefund:
-    a: str
-    b: str
-    aehnlichkeit: float | None
-    widerspruch_p: float | None
-    widerspruch: bool = False
 
 
 @dataclass(frozen=True)
 class Entscheidung:
     beantwortbar: bool
     grund: str | None
-    zulassungen: list[Zulassung]
     auswahl: list[Zulassung]
-    paare: list[PaarBefund]
     warnungen: list[str] = field(default_factory=list)
 
 
@@ -142,7 +117,6 @@ class Pipeline:
         # Callable(query, documents) -> one score per document.
         self.reranker: Callable[[str, list[str]], list[float]] | None = None
         # Callable(state, questions) -> answers map; and Callable(system, user) -> text.
-        self.decision: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None
         self.answerer: Callable[[str, str], str] | None = None
         self.gate_logprobs: Callable[[str, str], dict[str, float]] | None = None
 
@@ -293,87 +267,18 @@ class Pipeline:
         return [hit.id for hit in dense], [hit.id for hit in fts], hits
 
     def bewerte(self, result: SearchResult) -> Entscheidung:
-        """Ask the decision layer which passages may serve as evidence (spec F).
+        """Ask the gate which of the best passages may serve as evidence (spec F).
 
-        Measured 2026-11-07: one state holding all passages makes the small
-        multilingual model answer about the whole text — every P(true) came back
-        between 0.98 and 0.99. One state per passage separates a real hit (0.941)
-        from noise (0.001-0.028). So each passage gets its own request.
+        One request per candidate. The model answers with a single token and the
+        probability of "ja" decides. Measured 2026-11-07 on the goldset: with the
+        prompt variant "teil" unanswerable questions reach 0.09 at most while
+        answerable ones sit at 1.00, so a threshold in 0.3..0.9 separates them.
         """
-        passages = result.passages
+        passages = result.passages[: self.rag.gate_kandidaten]
         warnungen = list(result.warnungen)
         if not passages:
-            return Entscheidung(False, "keine Passage gefunden", [], [], [], warnungen)
+            return Entscheidung(False, "keine Passage gefunden", [], warnungen)
 
-        if self.rag.gate_modus == "choice":
-            return self._bewerte_choice(result, passages, warnungen)
-        if self.rag.gate_modus == "logprob":
-            return self._bewerte_logprob(result, passages, warnungen)
-        if self.rag.gate_modus == "aus":
-            # No decision call: the reranker order alone decides. This exists to
-            # measure what the decision layer adds, not as a production default.
-            auswahl = [Zulassung(passage=passage, p=1.0) for passage in passages[:3]]
-            return Entscheidung(True, None, auswahl, auswahl, [], warnungen)
-
-        zulassungen: list[Zulassung] = []
-        for number, passage in enumerate(passages, start=1):
-            prob, note = self._gate(result.question, passage)
-            if note:
-                warnungen.append(f"Auszug {number}: {note}")
-            if prob >= self.rag.laya_schwelle:
-                zulassungen.append(Zulassung(passage=passage, p=prob))
-
-        if not zulassungen:
-            return Entscheidung(False, "keine belegte Passage", [], [], [], warnungen)
-
-        zulassungen = [
-            replace(zulassung, deckung=self._deckung(result.question, zulassung.passage))
-            for zulassung in zulassungen
-        ]
-
-        paare = self._pairs(result.question, zulassungen)
-        auswahl = self._select(zulassungen, paare)
-
-        return Entscheidung(
-            beantwortbar=True,
-            grund=None,
-            zulassungen=zulassungen,
-            auswahl=auswahl,
-            paare=paare,
-            warnungen=warnungen,
-        )
-
-    def _bewerte_choice(
-        self, result: SearchResult, passages: list[Passage], warnungen: list[str]
-    ) -> Entscheidung:
-        """Gate as one choice over all candidates plus "keine" (E2)."""
-        state = build_noul_state(result.question, [passage.text for passage in passages])
-        answers = self._ask_decision(state, build_choice_questions(len(passages)))
-        probabilities = choice_probabilities(answers)
-
-        if not probabilities:
-            warnungen.append("keine Antwort der Prüfschicht")
-            return Entscheidung(False, "keine belegte Passage", [], [], [], warnungen)
-
-        bester = max(probabilities, key=lambda option: probabilities[option])
-        keine = probabilities.get("keine", 0.0)
-        marge = self.rag.gate_marge
-        # An absolute threshold is meaningless with eleven options: the mass is
-        # spread over them. What counts is the lead over "keine" (measured
-        # 2026-11-07: with laya_schwelle as a hard cut nothing was admitted).
-        if bester == "keine" or probabilities[bester] < keine + marge:
-            return Entscheidung(False, "keine belegte Passage", [], [], [], warnungen)
-
-        nummer = int(bester.lstrip("p"))
-        passage = passages[nummer - 1]
-        zulassung = Zulassung(passage=passage, p=probabilities[bester])
-        zulassung = replace(zulassung, deckung=self._deckung(result.question, passage))
-        return Entscheidung(True, None, [zulassung], [zulassung], [], warnungen)
-
-    def _bewerte_logprob(
-        self, result: SearchResult, passages: list[Passage], warnungen: list[str]
-    ) -> Entscheidung:
-        """Gate over single-token yes/no probabilities of the chat model."""
         zulassungen: list[Zulassung] = []
         for passage in passages:
             system, user = build_ja_nein_prompt(result.question, passage.text, self.rag.gate_prompt)
@@ -386,22 +291,13 @@ class Pipeline:
             if p is None:
                 warnungen.append("Prüfschicht lieferte keine Logprobs")
                 continue
-            if p >= self.rag.laya_schwelle:
+            if p >= self.rag.gate_schwelle:
                 zulassungen.append(Zulassung(passage=passage, p=p))
 
         if not zulassungen:
-            return Entscheidung(False, "keine belegte Passage", [], [], [], warnungen)
-
-        if self.rag.kombi:
-            # Combination: Qwen decides admission, Laya compares the admitted
-            # passages with each other (redundancy, contradiction). Two different
-            # roles, not two votes on the same question.
-            paare = self._pairs(result.question, zulassungen)
-            auswahl = self._select(zulassungen, paare)[:3]
-            return Entscheidung(True, None, zulassungen, auswahl, paare, warnungen)
-
-        auswahl = sorted(zulassungen, key=lambda item: item.p, reverse=True)[:3]
-        return Entscheidung(True, None, zulassungen, auswahl, [], warnungen)
+            return Entscheidung(False, "keine belegte Passage", [], warnungen)
+        auswahl = sorted(zulassungen, key=lambda item: item.p, reverse=True)
+        return Entscheidung(True, None, auswahl, warnungen)
 
     def _logprobs(self, system: str, user: str) -> dict[str, float]:
         """Logprob map of the chat model; injectable for tests."""
@@ -409,87 +305,6 @@ class Pipeline:
             return self.gate_logprobs(system, user)
         client = ChatClient(self.config.backends.base_url, self.config.backends.chat_model)
         return client.probabilities(system, user)
-
-    def _pruefe_antwort(self, antwort: str, quellen: list[Quelle]) -> float:
-        """Laya as answer checker: how well do the sources support the answer?
-
-        A different question shape than the gate: the model compares a written
-        answer with its source, not a question with a candidate. That is the role
-        the small model can plausibly fill.
-        """
-        beste = 0.0
-        for quelle in quellen:
-            state = build_stuetzen_state(quelle.text, antwort)
-            answers = self._ask_decision(state, build_stuetzen_questions())
-            prob, _ = probability(answers, "s1")
-            beste = max(beste, prob)
-            if beste >= self.rag.pruefung_schwelle:
-                return beste
-        return beste
-
-    def _gate(self, question: str, passage: Passage) -> tuple[float, str | None]:
-        """P(true) that this one passage answers the question (spec F1, F2)."""
-        state = build_noul_state(question, [passage.text])
-        answers = self._ask_decision(state, {"p1": build_questions(1)["p1"]})
-        return probability(answers, "p1")
-
-    def _deckung(self, question: str, passage: Passage) -> float | None:
-        """Coverage level 1..4 for one admissible passage (spec F4)."""
-        state = build_noul_state(question, [passage.text])
-        answers = self._ask_decision(state, {"d1": build_deckung_questions(1)["d1"]})
-        return level(answers, "d1")
-
-    def _pairs(self, question: str, zulassungen: list[Zulassung]) -> list[PaarBefund]:
-        """Compare admissible passages pairwise: similarity, contradiction (F7)."""
-        if len(zulassungen) < 2:
-            return []
-        befunde: list[PaarBefund] = []
-        for i in range(len(zulassungen)):
-            for j in range(i + 1, len(zulassungen)):
-                first = zulassungen[i]
-                second = zulassungen[j]
-                state = build_noul_state(question, [first.passage.text, second.passage.text])
-                questions = build_pair_questions([(1, 2)])
-                questions.update(build_widerspruch_questions([(1, 2)]))
-                answers = self._ask_decision(state, questions)
-                widerspruch_p, _ = probability(answers, "w1_2")
-                schwelle = self.rag.widerspruch_niveau
-                befunde.append(
-                    PaarBefund(
-                        a=first.passage.id,
-                        b=second.passage.id,
-                        aehnlichkeit=level(answers, "v1_2"),
-                        widerspruch_p=widerspruch_p,
-                        widerspruch=schwelle is not None and widerspruch_p >= schwelle,
-                    )
-                )
-        return befunde
-
-    def _select(self, zulassungen: list[Zulassung], paare: list[PaarBefund]) -> list[Zulassung]:
-        """Order by coverage; drop only what a measured threshold permits (spec F7)."""
-        ordered = sorted(
-            zulassungen,
-            key=lambda zulassung: (
-                -(zulassung.deckung if zulassung.deckung is not None else -1.0),
-                zulassung.passage.rrf_rank,
-            ),
-        )
-        drop: set[str] = set()
-        for befund in paare:
-            redundant = (
-                self.rag.redundanz_niveau is not None
-                and befund.aehnlichkeit is not None
-                and befund.aehnlichkeit >= self.rag.redundanz_niveau
-            )
-            if redundant or befund.widerspruch:
-                drop.add(self._weaker(befund, ordered))
-        return [zulassung for zulassung in ordered if zulassung.passage.id not in drop]
-
-    @staticmethod
-    def _weaker(befund: PaarBefund, ordered: list[Zulassung]) -> str:
-        """The passage with less coverage loses; on a tie the later one in the order."""
-        position = {zulassung.passage.id: index for index, zulassung in enumerate(ordered)}
-        return befund.a if position.get(befund.a, 0) > position.get(befund.b, 0) else befund.b
 
     def ask(
         self,
@@ -556,21 +371,6 @@ class Pipeline:
                 warnungen=entscheidung.warnungen,
             )
 
-        if self.rag.pruefung:
-            stuetzung = self._pruefe_antwort(text, quellen)
-            if stuetzung < self.rag.pruefung_schwelle:
-                return Antwort(
-                    text=None,
-                    grund="Antwort nicht durch die Auszüge gestützt",
-                    quellen=quellen,
-                    entscheidung=entscheidung,
-                    fehler=False,
-                    warnungen=[
-                        *entscheidung.warnungen,
-                        f"Prüfung der Antwort: stärkste Stützung {stuetzung:.3f} "
-                        f"unter {self.rag.pruefung_schwelle:.2f}",
-                    ],
-                )
         return Antwort(
             text=text,
             grund=None,
@@ -579,12 +379,6 @@ class Pipeline:
             fehler=False,
             warnungen=entscheidung.warnungen,
         )
-
-    def _ask_decision(self, state: str, questions: dict[str, Any]) -> dict[str, Any]:
-        if self.decision is None:
-            client = SystemOne(self.config.backends.base_url, self.config.backends.laya_model)
-            self.decision = client.ask
-        return self.decision(state, questions)
 
     def _answer_text(self, system: str, user: str) -> str:
         if self.answerer is None:

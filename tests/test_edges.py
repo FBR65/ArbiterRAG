@@ -21,7 +21,6 @@ backends:
   embed_model: m
   rerank_model: r
   chat_model: c
-  laya_model: l
 rags:
   a:
     description: d
@@ -94,7 +93,7 @@ def test_config_empty_rags_is_an_error(tmp_path: Path) -> None:
 def test_config_unknown_backend_key(tmp_path: Path) -> None:
     with pytest.raises(ConfigError) as err:
         load_config(
-            _write(tmp_path, BASE.replace("  laya_model: l", "  laya_model: l\n  tempo: 3")), {}
+            _write(tmp_path, BASE.replace("  chat_model: c", "  chat_model: c\n  tempo: 3")), {}
         )
     assert "tempo" in str(err.value)
 

@@ -99,12 +99,6 @@ MUTANTS = [
         '            scores[0] = float(entry["relevance_score"])',
     ),
     Mutant(
-        "laya-accepts-every-passage",
-        "src/arbiter/pipeline.py",
-        "            if prob >= self.rag.laya_schwelle:",
-        "            if prob >= 0.0:",
-    ),
-    Mutant(
         "api-allows-a-second-index-run",
         "src/arbiter/api.py",
         "            if request.rag in running:",
@@ -131,7 +125,7 @@ MUTANTS = [
     Mutant(
         "logprob-gate-ignores-the-threshold",
         "src/arbiter/pipeline.py",
-        "            if p >= self.rag.laya_schwelle:",
+        "            if p >= self.rag.gate_schwelle:",
         "            if True:",
     ),
 ]

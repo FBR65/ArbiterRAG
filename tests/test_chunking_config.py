@@ -24,7 +24,6 @@ def _cfg(tmp_path: Path, **rag_kwargs: object) -> Config:
             embed_model="m",
             rerank_model="r",
             chat_model="c",
-            laya_model="l",
         ),
         rags={
             "k": Rag(

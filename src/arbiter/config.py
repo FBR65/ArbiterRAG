@@ -26,7 +26,6 @@ class Backends:
     embed_model: str
     rerank_model: str
     chat_model: str
-    laya_model: str
     ocr_dots_model: str = ""
     ocr_paddle_model: str = ""
 
@@ -41,7 +40,7 @@ class Rag:
     top_k_fts: int = 20
     fuse_top_k: int = 20
     rerank_top_n: int = 5
-    laya_schwelle: float = 0.5
+    gate_schwelle: float = 0.5
     hyde: bool = True
     hyde_max_chars: int = 800
     ocr: bool = False
@@ -52,14 +51,8 @@ class Rag:
     hybrid: bool = True
     fts_stem: bool = False
     hyde_gewicht: float = 0.5
-    gate_modus: str = "noul"
-    gate_marge: float = 0.1
     gate_prompt: str = "teil"
-    kombi: bool = False
-    pruefung: bool = False
-    pruefung_schwelle: float = 0.5
-    widerspruch_niveau: float | None = None
-    redundanz_niveau: float | None = None
+    gate_kandidaten: int = 5
 
 
 @dataclass(frozen=True)
@@ -75,7 +68,6 @@ _BACKEND_KEYS = {
     "embed_model",
     "rerank_model",
     "chat_model",
-    "laya_model",
     "ocr_dots_model",
     "ocr_paddle_model",
 }
@@ -87,7 +79,6 @@ _RAG_KEYS = {
     "top_k_fts",
     "fuse_top_k",
     "rerank_top_n",
-    "laya_schwelle",
     "hyde",
     "hyde_max_chars",
     "ocr",
@@ -98,21 +89,14 @@ _RAG_KEYS = {
     "hybrid",
     "fts_stem",
     "hyde_gewicht",
-    "gate_modus",
-    "gate_marge",
     "gate_prompt",
-    "kombi",
-    "pruefung",
-    "pruefung_schwelle",
-    "widerspruch_niveau",
-    "redundanz_niveau",
+    "gate_kandidaten",
 }
 _REQUIRED_BACKENDS = {
     "base_url",
     "embed_model",
     "rerank_model",
     "chat_model",
-    "laya_model",
 }
 _REQUIRED_RAG = {"description", "corpus_path", "extensions"}
 
@@ -150,7 +134,6 @@ def load_config(path: Path, environ: Mapping[str, str]) -> Config:
         embed_model=str(backends_raw["embed_model"]),
         rerank_model=str(backends_raw["rerank_model"]),
         chat_model=str(backends_raw["chat_model"]),
-        laya_model=str(backends_raw["laya_model"]),
         ocr_dots_model=str(backends_raw.get("ocr_dots_model", "")),
         ocr_paddle_model=str(backends_raw.get("ocr_paddle_model", "")),
     )
@@ -204,7 +187,7 @@ def _rag(name: str, entry: Any, filename: str) -> Rag:
         top_k_fts=int(entry.get("top_k_fts", 20)),
         fuse_top_k=int(entry.get("fuse_top_k", 20)),
         rerank_top_n=int(entry.get("rerank_top_n", 5)),
-        laya_schwelle=float(entry.get("laya_schwelle", 0.5)),
+        gate_schwelle=float(entry.get("gate_schwelle", 0.5)),
         hyde=bool(entry.get("hyde", True)),
         hyde_max_chars=int(entry.get("hyde_max_chars", 800)),
         ocr=bool(entry.get("ocr", False)),
@@ -215,18 +198,8 @@ def _rag(name: str, entry: Any, filename: str) -> Rag:
         hybrid=bool(entry.get("hybrid", True)),
         fts_stem=bool(entry.get("fts_stem", False)),
         hyde_gewicht=float(entry.get("hyde_gewicht", 0.5)),
-        gate_modus=str(entry.get("gate_modus", "noul")),
-        gate_marge=float(entry.get("gate_marge", 0.1)),
         gate_prompt=str(entry.get("gate_prompt", "teil")),
-        kombi=bool(entry.get("kombi", False)),
-        pruefung=bool(entry.get("pruefung", False)),
-        pruefung_schwelle=float(entry.get("pruefung_schwelle", 0.5)),
-        widerspruch_niveau=(
-            None if entry.get("widerspruch_niveau") is None else float(entry["widerspruch_niveau"])
-        ),
-        redundanz_niveau=(
-            None if entry.get("redundanz_niveau") is None else float(entry["redundanz_niveau"])
-        ),
+        gate_kandidaten=int(entry.get("gate_kandidaten", 5)),
     )
 
 

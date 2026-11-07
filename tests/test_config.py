@@ -16,7 +16,6 @@ backends:
   embed_model: bge-m3-gguf
   rerank_model: bge-reranker-v2-m3
   chat_model: gemma-4-12B
-  laya_model: laya-multilingual
 rags:
   miethaus:
     description: Mietvertraege und Nebenkostenabrechnungen
@@ -45,7 +44,7 @@ def test_loads_minimal_config_with_defaults(tmp_path: Path) -> None:
     assert rag.extensions == (".pdf",)
     assert rag.fuse_top_k == 20
     assert rag.rerank_top_n == 5
-    assert rag.laya_schwelle == 0.5
+    assert rag.gate_schwelle == 0.5
     assert rag.hyde is True
     assert rag.hyde_max_chars == 800
 

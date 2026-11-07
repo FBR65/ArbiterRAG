@@ -50,24 +50,9 @@ def antwort_json(antwort: Antwort) -> dict[str, Any]:
         if entscheidung is None
         else {
             "beantwortbar": entscheidung.beantwortbar,
-            "zulassungen": [
-                {
-                    "id": zulassung.passage.id,
-                    "p": zulassung.p,
-                    "deckung": zulassung.deckung,
-                }
-                for zulassung in entscheidung.zulassungen
-            ],
-            "auswahl": [zulassung.passage.id for zulassung in entscheidung.auswahl],
-            "paare": [
-                {
-                    "a": befund.a,
-                    "b": befund.b,
-                    "aehnlichkeit": befund.aehnlichkeit,
-                    "widerspruch_p": befund.widerspruch_p,
-                    "widerspruch": befund.widerspruch,
-                }
-                for befund in entscheidung.paare
+            "grund": entscheidung.grund,
+            "auswahl": [
+                {"id": zulassung.passage.id, "p": zulassung.p} for zulassung in entscheidung.auswahl
             ],
         },
         "warnungen": antwort.warnungen,

@@ -71,7 +71,6 @@ def _app(tmp_path: Path, verhalten: str = "ok", factory=None):
             embed_model="m",
             rerank_model="r",
             chat_model="c",
-            laya_model="l",
         ),
         rags={
             "k": Rag(

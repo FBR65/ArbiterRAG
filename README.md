@@ -61,4 +61,4 @@ uv run python scripts/mutants.py      # Mutationslauf, setzt sauberen Arbeitsbau
 ## Lizenzen
 
 Code: MIT. Modelle, die der Client anspricht: `bge-m3` (MIT),
-`bge-reranker-v2-m3` (Apache-2.0), `laya` multilingual (Apache-2.0).
+`bge-reranker-v2-m3` (Apache-2.0).

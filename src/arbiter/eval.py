@@ -136,7 +136,7 @@ def run(pipeline: Pipeline, goldset: list[GoldFrage]) -> list[Stufe]:
         twin.store = pipeline.store
         twin.hyde = pipeline.hyde
         twin.reranker = pipeline.reranker
-        twin.decision = pipeline.decision
+        twin.gate_logprobs = pipeline.gate_logprobs
         twin.answerer = pipeline.answerer
         return twin
 
@@ -144,7 +144,7 @@ def run(pipeline: Pipeline, goldset: list[GoldFrage]) -> list[Stufe]:
         _stage(stage_pipeline(nur_fusion), goldset, "nur Fusion", mit_antwort=False),
         _stage(stage_pipeline(mit_hyde), goldset, "mit HyDE", mit_antwort=False),
         _stage(stage_pipeline(mit_rerank), goldset, "mit Reranker", mit_antwort=False),
-        _stage(stage_pipeline(mit_rerank), goldset, "mit Laya", mit_antwort=True),
+        _stage(stage_pipeline(mit_rerank), goldset, "mit Gate", mit_antwort=True),
     ]
 
 

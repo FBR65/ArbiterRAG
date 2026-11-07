@@ -48,6 +48,11 @@ def test_word_overlap_bounds() -> None:
     assert 0.0 < word_overlap("Miete 940 Euro", "Miete 950 Euro") < 1.0
 
 
+def test_one_shared_word_out_of_four_is_a_quarter_not_a_match() -> None:
+    """A short second reading must not score 1.0 just because it is contained."""
+    assert word_overlap("Miete 940 Euro monatlich", "Miete") == pytest.approx(0.25)
+
+
 def test_render_produces_png(tmp_path: Path) -> None:
     from tests.test_loaders import _make_text_pdf
 

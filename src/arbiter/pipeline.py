@@ -25,6 +25,8 @@ from arbiter.decision import (
     build_noul_state,
     build_pair_questions,
     build_questions,
+    build_stuetzen_questions,
+    build_stuetzen_state,
     build_widerspruch_questions,
     choice_probabilities,
     level,
@@ -363,6 +365,23 @@ class Pipeline:
         zulassung = replace(zulassung, deckung=self._deckung(result.question, passage))
         return Entscheidung(True, None, [zulassung], [zulassung], [], warnungen)
 
+    def _pruefe_antwort(self, antwort: str, quellen: list[Quelle]) -> float:
+        """Laya as answer checker: how well do the sources support the answer?
+
+        A different question shape than the gate: the model compares a written
+        answer with its source, not a question with a candidate. That is the role
+        the small model can plausibly fill.
+        """
+        beste = 0.0
+        for quelle in quellen:
+            state = build_stuetzen_state(quelle.text, antwort)
+            answers = self._ask_decision(state, build_stuetzen_questions())
+            prob, _ = probability(answers, "s1")
+            beste = max(beste, prob)
+            if beste >= self.rag.pruefung_schwelle:
+                return beste
+        return beste
+
     def _gate(self, question: str, passage: Passage) -> tuple[float, str | None]:
         """P(true) that this one passage answers the question (spec F1, F2)."""
         state = build_noul_state(question, [passage.text])
@@ -491,6 +510,22 @@ class Pipeline:
                 fehler=True,
                 warnungen=entscheidung.warnungen,
             )
+
+        if self.rag.pruefung:
+            stuetzung = self._pruefe_antwort(text, quellen)
+            if stuetzung < self.rag.pruefung_schwelle:
+                return Antwort(
+                    text=None,
+                    grund="Antwort nicht durch die Auszüge gestützt",
+                    quellen=quellen,
+                    entscheidung=entscheidung,
+                    fehler=False,
+                    warnungen=[
+                        *entscheidung.warnungen,
+                        f"Prüfung der Antwort: stärkste Stützung {stuetzung:.3f} "
+                        f"unter {self.rag.pruefung_schwelle:.2f}",
+                    ],
+                )
         return Antwort(
             text=text,
             grund=None,

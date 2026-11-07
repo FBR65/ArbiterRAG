@@ -54,6 +54,8 @@ class Rag:
     hyde_gewicht: float = 0.5
     gate_modus: str = "noul"
     gate_marge: float = 0.1
+    pruefung: bool = False
+    pruefung_schwelle: float = 0.5
     widerspruch_niveau: float | None = None
     redundanz_niveau: float | None = None
 
@@ -96,6 +98,8 @@ _RAG_KEYS = {
     "hyde_gewicht",
     "gate_modus",
     "gate_marge",
+    "pruefung",
+    "pruefung_schwelle",
     "widerspruch_niveau",
     "redundanz_niveau",
 }
@@ -209,6 +213,8 @@ def _rag(name: str, entry: Any, filename: str) -> Rag:
         hyde_gewicht=float(entry.get("hyde_gewicht", 0.5)),
         gate_modus=str(entry.get("gate_modus", "noul")),
         gate_marge=float(entry.get("gate_marge", 0.1)),
+        pruefung=bool(entry.get("pruefung", False)),
+        pruefung_schwelle=float(entry.get("pruefung_schwelle", 0.5)),
         widerspruch_niveau=(
             None if entry.get("widerspruch_niveau") is None else float(entry["widerspruch_niveau"])
         ),

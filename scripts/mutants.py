@@ -125,7 +125,7 @@ MUTANTS = [
     Mutant(
         "choice-gate-ignores-keine",
         "src/arbiter/pipeline.py",
-        "        if bester == \"keine\" or probabilities[bester] < keine + marge:",
+        '        if bester == "keine" or probabilities[bester] < keine + marge:',
         "        if False:",
     ),
 ]

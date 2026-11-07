@@ -69,6 +69,36 @@ beantwortet, davon 2 richtig.
 keine schlechten. `gate_modus: aus` ist deshalb der Default; `noul` und `choice`
 bleiben getestet im Code, damit die Messung wiederholbar ist.
 
+## E2 — andere Rolle: Prüfer der fertigen Antwort
+
+Getestet am 2026-11-07: Laya bekommt nicht die Frage mit einem Kandidaten, sondern
+den **Auszug mit der fertigen Antwort** und beantwortet „Stützt Auszug [1] die
+Antwort?".
+
+Verteilung über alle 31 Fragen:
+
+| Gruppe | n | min | Median | max |
+|---|---|---|---|---|
+| Antwort mit richtigem Beleg | 20 | 0,604 | **0,987** | 1,000 |
+| Antwort ohne Beleg / auf nicht beantwortbare Frage | 11 | 0,532 | **0,874** | 0,991 |
+
+Beide Gruppen liegen fast übereinander. Der Schwellen-Sweep zeigt den Tausch:
+
+| Schwelle | richtige Antworten behalten | falsche abgelehnt |
+|---|---|---|
+| 0,60 | 20/20 | 2/11 |
+| 0,90 | 16/20 | 6/11 |
+| 0,95 | 12/20 | 8/11 |
+
+Im Goldset-Lauf mit `pruefung: true`, Schwelle 0,9: **16 richtige Belege (statt 19),
+9 falsch (statt 8)**. Die Prüfung nimmt also drei gute Antworten weg und keine
+schlechte. Der Tausch aus dem Sweep überträgt sich nicht auf die Kette.
+
+**Ergebnis:** Die Rolle „Prüfer der Antwort" trennt besser als das Tor, aber nicht
+gut genug: die Verteilungen überlappen, und im Betrieb kostet sie richtige
+Antworten. `pruefung: false` bleibt der Default; der Code und die Messung bleiben
+erhalten.
+
 ## Endstand der Kette
 
 | Stufe | Recall@10 | nDCG@10 | Beleg ok (von 23) |

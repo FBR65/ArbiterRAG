@@ -139,6 +139,26 @@ def build_widerspruch_questions(pairs: list[tuple[int, int]]) -> dict[str, Any]:
     }
 
 
+def build_stuetzen_state(passage: str, antwort: str) -> str:
+    """Auszug plus the answer that claims to come from it (role: answer check)."""
+    cut = " ".join(passage.split())[:PASSAGE_CHARS]
+    return f"Auszug [1]:\n{cut}\n\nAntwort:\n{antwort.strip()}"
+
+
+def build_stuetzen_questions() -> dict[str, Any]:
+    """One ``noul`` question: does this passage support the answer?"""
+    return {
+        "s1": {
+            "type": "noul",
+            "instructions": (
+                "Stützt Auszug [1] die Antwort? Antworte mit ja nur, wenn die "
+                "Aussagen der Antwort im Auszug stehen. Eine Antwort, die nur "
+                "zum Thema passt, stützt der Auszug nicht."
+            ),
+        }
+    }
+
+
 def build_choice_questions(count: int) -> dict[str, Any]:
     """One ``choice`` question over all markers plus "keine" (E2).
 
@@ -159,9 +179,7 @@ def build_choice_questions(count: int) -> dict[str, Any]:
     }
 
 
-def choice_probabilities(
-    answers: dict[str, Any], key: str = "wahl"
-) -> dict[str, float]:
+def choice_probabilities(answers: dict[str, Any], key: str = "wahl") -> dict[str, float]:
     """Probabilities per option of one ``choice`` answer (empty if missing)."""
     entry = answers.get(key)
     if not isinstance(entry, dict):

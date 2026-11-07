@@ -279,6 +279,40 @@ Menge lässt sich aus `deepset/germanquad` bauen (Antwortsätze mit Textstelle a
 „gestützt", Sätze aus fremden Artikeln als „nicht gestützt"). Erst danach ist die
 Schwelle 0,5 eine gemessene Zahl und keine Annahme.
 
+## I — Der Korpus ist deutsch, das Chunking war nicht das Problem
+
+Der Befund „ohne Beleg" war nicht mit dem Chunking zu erklären. Die Prüfung des
+Index zeigte: **alle** beschrifteten Seiten existieren, die Seitenzahlen stimmen. Die
+Ursache lag davor — zwei der sieben Dokumente sind englisch (IDP-Artikel,
+Laya-Artikel), und die Fragen dazu sind deutsch. Diese Dokumente zogen Ränge, ohne
+dass die Satzprüfung ihre Sätze je als belegt anerkennen konnte.
+
+**Also: Sprache als Korpus-Eigenschaft.** `sprache: de` filtert beim Laden alle
+Dokumente aus, die nicht deutsch sind (Stoppwort-Zählung je Datei, nicht je Seite); die
+Meldung nennt die übersprungenen Dateien. Die zehn Fragen zu den englischen Artikeln
+stehen weiter in `goldset/downloads-alle-sprachen.yaml`, das deutsche Goldset hat 21
+Fragen (12 beantwortbar, 9 nicht).
+
+| Korpus | Chunking | Antworten | Beleg ok | ohne Beleg | Zitate |
+|---|---|---|---|---|---|
+| gemischt (7 Dateien) | 600 Zeichen | 21 | 16 | 5 | 10 |
+| **nur deutsch (5 Dateien)** | **600 Zeichen** | **13** | **12** | **1** | 8 |
+| nur deutsch | 300 Zeichen + Elternseite | 14 | 11 | 3 | 7 |
+
+Auf dem deutschen Korpus trifft die Antwort bei **12 von 12** beantwortbaren Fragen die
+richtige Seite. Die eine Antwort ohne Beleg geht an eine nicht beantwortbare Frage —
+das Gate hat sie durchgelassen.
+
+Das Chunking bringt danach nichts mehr: 300 Zeichen mit Rückgabe der ganzen Seite
+(small-to-big) liefert 11 statt 12 richtige Belege und drei statt einer Antwort ohne
+Beleg. Der Gewinn kam vom Sprachfilter, nicht von der Zerlegung. **600 Zeichen bleiben.**
+
+Was jetzt noch offen ist: **8 von 13 Antworten sind Zitate.** Die Satzprüfung verwirft
+deutsche Umformulierungen, obwohl Quelle und Aussage dieselbe Sprache haben. Das ist
+kein Sprachproblem mehr, sondern eine zu enge Formulierung der Prüffrage. Sie zu
+kalibrieren ist der nächste Hebel — und der einzige, der die Zitate senken kann, ohne
+die Null bei den Falschantworten aufzugeben.
+
 ## Endstand der Kette
 
 | Stufe | Recall@10 | nDCG@10 | Beleg ok (von 23) |

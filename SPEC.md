@@ -267,3 +267,67 @@ sagt nichts.
 Freigabe erteilt 2026-11-07. Stufe 1 beginnt mit RED.
 D10, D11, D12 sind offen; D11 und D12 blockieren erst Stufe 3 bzw. den ersten
 echten Lauf.
+
+---
+
+## 10. Stufe 6 — HTTP-Schnittstelle (Entwurf, wartet auf Freigabe)
+
+Auftrag 2026-11-07: „Erweitere das System um eine FastAPI". Die Bibliothek
+bleibt die Wahrheit; die API ist ein weiterer dünner Client wie die CLI (H5).
+
+### Offene Entscheidungen
+
+| ID | Frage | Optionen | Empfehlung |
+|---|---|---|---|
+| D15 | Umfang der Endpunkte | (a) nur `health`, `rags`, `search` (b) zusätzlich `index` als Hintergrundauftrag mit Status (c) zusätzlich `ask` (Antwort) | **(b)** — (c) gibt es erst mit Stufe 5; ein Endpunkt, der nichts kann, ist Ballast |
+| D16 | Indexierung im Request oder als Auftrag? | (a) blockierend, Antwort nach Ende (b) 202 mit `job_id`, Status über `GET /index/{job_id}` | **(b)** — der echte Lauf braucht heute 36 s für 10 PDFs; bei 500 PDFs mit OCR sind es Stunden. Ein blockierender Request läuft in jedes Gateway-Timeout |
+| D17 | Zugriffsschutz | (a) keiner, Bindung an `127.0.0.1` (b) Bearer-Token aus Umgebungsvariable, Pflicht (c) optional | **(a)** für den lokalen Betrieb, mit `ARBITER_BIND` als Konfiguration; (b) erst wenn der Dienst von außen erreichbar ist |
+| D18 | Betrieb | (a) `uv run arbiter-api` im Vordergrund (b) systemd-User-Service (c) Podman-Container | **(b)** — Hausregel für lange laufende Prozesse, und der Dienst soll nach dem Reboot da sein. Container wäre die zweite Sandbox um dieselbe Sache |
+| D19 | Fehlerformat | (a) FastAPIs `{"detail": ...}` (b) eigenes `{"fehler": {"code": ..., "meldung": ...}}` | **(a)** — Standard bleibt Standard; die Meldung darin ist deutsch |
+
+### Verhalten (Abnahmekriterien)
+
+- **P1** `GET /health` antwortet `200 {"status": "ok", "version": "<Paketversion>"}`
+  ohne einen Modellaufruf.
+- **P2** `GET /rags` antwortet je RAG `{name, description, abschnitte}`. Die Zahl
+  kommt aus dem Store; ein RAG ohne Index meldet `abschnitte: 0` und keinen Fehler.
+- **P3** `POST /search {rag, frage}` antwortet `200` mit derselben Passagenliste wie
+  die CLI: `id, quelle, seite, rrf_rank, rrf_score, text`, dazu `ocr` und
+  `ocr_ueberlappung`.
+- **P4** Unbekannter RAG → `404` mit der Liste der bekannten Namen. Fehlendes Feld →
+  `422` (FastAPI-Standard). Frage über `max_frage_zeichen` → `400` mit deutscher
+  Meldung.
+- **P5** `POST /index {rag}` antwortet `202 {"job_id": ...}`. `GET /index/{job_id}`
+  antwortet `{"status": "laeuft"|"fertig"|"fehler", "bericht": {...}}`, wobei
+  `bericht` die Zahlen aus H1 trägt. Unbekannte `job_id` → `404`.
+- **P6** Ein zweiter Index-Lauf für denselben RAG, solange der erste läuft →
+  `409` mit Meldung, kein zweiter Prozess.
+- **P7** Ein Modell-Backend, das nicht antwortet, ergibt `503` mit deutscher
+  Meldung. Kein Stacktrace im Antwortkörper.
+- **P8** Ungültige Konfiguration → der Dienst startet nicht, Meldung auf stderr,
+  Exit-Code 1. Kein Start mit halber Konfiguration.
+- **P9** Alle API-Tests laufen über `httpx.ASGITransport` gegen den ASGI-App, ohne
+  Server und ohne Netz; Embedder und OCR sind Attrappen.
+
+### Was die API nicht tun darf
+
+- **Q1** Eine zweite Logik neben der Bibliothek enthalten. Jeder Endpunkt ruft
+  `Pipeline` oder `Store`, nichts anderes.
+- **Q2** Modellnamen, Pfade oder URLs fest verdrahten (A4 gilt weiter).
+- **Q3** Einen Stacktrace oder einen Dateipfad aus dem Korpus im Antwortkörper
+  ausgeben.
+- **Q4** Einen Index-Lauf ohne Auftragskennung starten, den niemand mehr abfragen
+  kann.
+
+### Setup
+
+| Punkt | Inhalt |
+|---|---|
+| Neue Abhängigkeiten | `fastapi`, `uvicorn[standard]` (beide MIT/BSD-3) — nur für die API-Ebene |
+| Einstiegspunkt | `arbiter-api = "arbiter.api:main"` neben `arbiter = "arbiter.cli:main"` |
+| Tests | `httpx.ASGITransport`, keine laufende Instanz nötig |
+| Betrieb | systemd-User-Service nach D18, Bindung über `ARBITER_BIND` |
+
+Aufwand: rund ein halber Tag, mit Tests und Nachweis.
+
+Freigabe für D15–D19 und diesen Abschnitt: danach beginnt die Stufe mit RED.

@@ -45,6 +45,19 @@ class Document:
     ocr_ueberlappung: float = 0.0
 
 
+def fingerprint(path: Path, einstellungen: str = "") -> str:
+    """Content hash plus the settings that change the result of reading the file.
+
+    Without the settings, changing the chunk size or turning OCR on would keep the
+    old rows forever, because the file itself did not change.
+    """
+    digest = hashlib.sha256(einstellungen.encode("utf-8"))
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 @dataclass
 class LoadResult:
     documents: list[Document] = field(default_factory=list)
@@ -52,6 +65,8 @@ class LoadResult:
     skipped_files: int = 0
     textless_pages: int = 0
     duplicates: int = 0
+    unchanged: int = 0
+    fingerprints: dict[str, str] = field(default_factory=dict)
 
 
 _DE = {
@@ -87,6 +102,9 @@ def load_corpus(
     extensions: tuple[str, ...],
     ocr: OcrHook | None = None,
     sprache: str | None = None,
+    ocr_alle: bool = False,
+    unveraendert: Callable[[str, str], bool] | None = None,
+    einstellungen: str = "",
 ) -> LoadResult:
     """Read every configured file under ``root``, recursively."""
     result = LoadResult()
@@ -101,9 +119,16 @@ def load_corpus(
         if not path.is_file() or path.suffix.lower() not in wanted:
             continue
         relative = path.relative_to(root).as_posix()
+        kennung = fingerprint(path, einstellungen)
+        # Every processed file records its fingerprint, skipped or read: otherwise the
+        # second run would have nothing to compare against and read everything again.
+        result.fingerprints[relative] = kennung
+        if unveraendert is not None and unveraendert(relative, kennung):
+            result.unchanged += 1
+            continue
         if path.suffix.lower() == ".pdf":
             before = len(result.documents)
-            _load_pdf(path, relative, result, ocr)
+            _load_pdf(path, relative, result, ocr, ocr_alle)
             _drop_duplicate(path, relative, result, before, seen)
         else:
             before = len(result.documents)
@@ -156,16 +181,28 @@ def _drop_duplicate(
     seen[digest] = relative
 
 
-def _load_pdf(path: Path, relative: str, result: LoadResult, ocr: OcrHook | None) -> None:
+def _load_pdf(
+    path: Path,
+    relative: str,
+    result: LoadResult,
+    ocr: OcrHook | None,
+    ocr_alle: bool = False,
+) -> None:
     try:
         pages_before = len(result.documents)
         for number, text in enumerate(_pdf_pages(path, relative, result), start=1):
-            if not text.strip():
+            # Spec D10: dots-mocr and paddle both run on every page when asked for it.
+            # Their reading replaces the text layer; only a failed OCR falls back to it.
+            if ocr is not None and (ocr_alle or not text.strip()):
                 document = _ocr_page(path, relative, number, result, ocr)
-                if document is None:
+                if document is not None:
+                    result.documents.append(document)
+                    continue
+                if not text.strip():
                     result.textless_pages += 1
                     continue
-                result.documents.append(document)
+            if not text.strip():
+                result.textless_pages += 1
                 continue
             result.documents.append(Document(quelle=relative, seite=number, text=text))
         if len(result.documents) == pages_before:

@@ -45,6 +45,8 @@ class Rag:
     hyde_max_chars: int = 800
     ocr: bool = False
     ocr_dpi: int = 200
+    ocr_dpi_paddle: int = 300
+    ocr_alle_seiten: bool = False
     rerank: bool = True
     chunk_chars: int = 600
     chunk_overlap: int = 100
@@ -89,6 +91,8 @@ _RAG_KEYS = {
     "hyde_max_chars",
     "ocr",
     "ocr_dpi",
+    "ocr_dpi_paddle",
+    "ocr_alle_seiten",
     "rerank",
     "chunk_chars",
     "chunk_overlap",
@@ -204,6 +208,8 @@ def _rag(name: str, entry: Any, filename: str) -> Rag:
         hyde_max_chars=int(entry.get("hyde_max_chars", 800)),
         ocr=bool(entry.get("ocr", False)),
         ocr_dpi=int(entry.get("ocr_dpi", 200)),
+        ocr_dpi_paddle=int(entry.get("ocr_dpi_paddle", 300)),
+        ocr_alle_seiten=bool(entry.get("ocr_alle_seiten", False)),
         rerank=bool(entry.get("rerank", True)),
         chunk_chars=int(entry.get("chunk_chars", 600)),
         chunk_overlap=int(entry.get("chunk_overlap", 100)),

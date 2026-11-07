@@ -56,7 +56,7 @@ Antwort". Die Prüfschicht kann es. ArbiterRAG trennt Ordnen von Urteilen.
 
 | ID | Frage | Optionen | Empfehlung |
 |---|---|---|---|
-| D10 | PDF **ohne Textebene** (Scan) | **b** — OCR über llama-swap, Modelle `dots-mocr` **und** `paddleocr-vl` | Verhalten B8; Kombination offen (D13) |
+| D10 | OCR | **b** — OCR über llama-swap, Modelle `dots-mocr` **und** `paddleocr-vl`, auf **jeder** PDF-Seite (Vorgabe Frank 2026-11-07) | Verhalten B8; `ocr_alle_seiten` schaltet es ein |
 | D11 | Reranker-Eintrag ist defekt: `-m` zeigt auf ein safetensors-Verzeichnis, llama-server kann das nicht laden (`upstream command exited prematurely`). Kein GGUF vorhanden. | **reparieren** | erledigt 2026-11-07: GGUF `Q8_0` (gpustack, Apache-2.0) geladen, Eintrag mit `--reranking` versehen, `/v1/rerank` antwortet |
 | D12 | Pfad des PDF-Korpus für den ersten echten Lauf | **`/home/speedy/Downloads`** | erledigt: 9 Dateien, 1053 Abschnitte, 1 Seite ohne Textebene |
 | D13 | Wie werden die **zwei** OCR-Ausgaben kombiniert? | **a** | umgesetzt: dots-Text indiziert, paddle als Vergleichsfeld, Überlappung berichtet |
@@ -92,6 +92,12 @@ Jedes Verhalten wird als Test geschrieben, rot gesehen, dann grün gemacht.
   (SHA-256 des Textes) und `vector`.
 - **B4** Eine erneute Indexierung fügt unveränderte Dateien nicht doppelt ein;
   geänderte ersetzen ihren alten Datensatz. Maßgeblich ist der Hash.
+- **B12** Der Ingest einer Datei findet **einmal** statt. Vor dem Lesen wird eine
+  Kennung geprüft: SHA-256 über den Dateiinhalt plus die Einstellungen, die den
+  Text bestimmen (Abschnittsgröße, Überlappung, OCR an/aus und alle Seiten, beide
+  DPI-Werte, Sprache, Modellnamen). Stimmt sie, wird die Datei **nicht gelesen** —
+  kein OCR, keine Einbettung —, und ihre Zeilen bleiben unangetastet. Die Kennung
+  steht in der Tabelle `<rag>_ingest`.
 - **B5** Eine Datei ohne lesbaren Text erzeugt eine Warnung mit Pfad; die
   Indexierung läuft weiter. Am Ende stehen die Zahl der übersprungenen Dateien
   und der textlosen Seiten.
@@ -109,13 +115,15 @@ Jedes Verhalten wird als Test geschrieben, rot gesehen, dann grün gemacht.
   die nicht mehr im Korpus liegen, werden beim Indexieren entfernt.
   *Grund: im Testkorpus lagen drei PDFs zusätzlich unter `ppt/` und belegten
   doppelt Ränge.*
-- **B8** Eine PDF-Seite ohne Textebene wird bei `ocr: true` mit `ocr_dpi`
-  (Default 200) gerendert und an **beide** OCR-Modelle geschickt. `dots-mocr`
+- **B8** Bei `ocr: true` geht **jede** PDF-Seite durch **beide** OCR-Modelle —
+  unabhängig davon, ob eine Textebene vorhanden ist. Jedes Modell bekommt ein
+  eigenes Rendering: `dots-mocr` mit `ocr_dpi` (Default 200) und dem Layout-Prompt
+  der Model Card, `paddleocr-vl` mit `ocr_dpi_paddle` (Default 300). `dots-mocr`
   liefert den Text, der indiziert wird: seine Layout-JSON wird in Lesereihenfolge
-  zu Text reduziert, ohne Übersetzung, Bilder ohne Text. `paddleocr-vl` läuft mit
-  dem Aufgabenschalter `OCR:` auf derselben Seite; seine Ausgabe steht als
-  `ocr_paddle` im Datensatz, die Wortüberlappung beider Lesungen als
-  `ocr_ueberlappung`. Die beiden Texte werden **nicht** gemischt (D13).
+  zu Text reduziert, ohne Übersetzung, Bilder ohne Text. Die Ausgabe von
+  `paddleocr-vl` steht als `ocr_paddle` im Datensatz, die Wortüberlappung beider
+  Lesungen als `ocr_ueberlappung`. Die beiden Texte werden **nicht** gemischt
+  (D13). Ist `ocr_alle_seiten: false`, greift OCR nur auf Seiten ohne Textebene.
 - **B9** Scheitert ein OCR-Modell, bleibt die Seite übersprungen und der Grund
   steht als Warnung im Bericht. Der Lauf bricht nicht ab.
 - **B10** Eine Tabelle aus einer älteren Version wird beim Schreiben um fehlende

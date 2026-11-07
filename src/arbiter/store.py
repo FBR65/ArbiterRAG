@@ -194,6 +194,33 @@ class Store:
         if missing:
             table.add_columns(missing)
 
+    def fingerprints(self, rag: str) -> dict[str, str]:
+        """File fingerprints of the documents already in the index.
+
+        The check has to happen *before* a file is read, otherwise OCR and embedding
+        are paid again for an unchanged file.
+        """
+        name = f"{rag}_ingest"
+        try:
+            table = self._db.open_table(name)
+        except Exception:
+            return {}
+        return {row["quelle"]: row["fingerabdruck"] for row in table.to_arrow().to_pylist()}
+
+    def set_fingerprint(self, rag: str, quelle: str, fingerabdruck: str) -> None:
+        name = f"{rag}_ingest"
+        try:
+            table = self._db.open_table(name)
+        except Exception:
+            table = self._db.create_table(
+                name,
+                schema=pa.schema(
+                    [pa.field("quelle", pa.string()), pa.field("fingerabdruck", pa.string())]
+                ),
+            )
+        table.delete(f"quelle = '{quelle.replace(chr(39), chr(39) * 2)}'")
+        table.add([{"quelle": quelle, "fingerabdruck": fingerabdruck}])
+
     def _table_or_create(self, rag: str, dim: int) -> Any:
         try:
             table = self._db.open_table(rag)

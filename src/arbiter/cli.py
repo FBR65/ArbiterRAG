@@ -75,15 +75,21 @@ def _index(pipeline: Pipeline) -> int:
     report = pipeline.index()
     rag = pipeline.rag
 
-    if report.files == 0 and report.skipped_files == 0 and not report.warnings:
+    if (
+        report.files == 0
+        and report.skipped_files == 0
+        and report.unchanged == 0
+        and not report.warnings
+    ):
         print(f"Korpus leer: {rag.corpus_path}", file=sys.stderr)
         return EXIT_FAIL
 
     print(
-        f"{report.files} Dateien, {report.chunks} Abschnitte, "
-        f"{report.changed} neu oder geändert, {report.skipped_files} übersprungen, "
-        f"{report.textless_pages} Seiten ohne Text, {report.ocr_pages} Seiten per OCR, "
-        f"{report.duplicates} Dubletten, {report.entfernt} Dateien aus dem Index entfernt"
+        f"{report.files} Dateien gelesen, {report.unchanged} unverändert übersprungen, "
+        f"{report.chunks} Abschnitte, {report.changed} neu oder geändert, "
+        f"{report.skipped_files} ohne Text, {report.textless_pages} Seiten ohne Text, "
+        f"{report.ocr_pages} Seiten per OCR, {report.duplicates} Dubletten, "
+        f"{report.entfernt} Dateien aus dem Index entfernt"
     )
     for warning in report.warnings:
         print(f"  Hinweis: {warning}", file=sys.stderr)

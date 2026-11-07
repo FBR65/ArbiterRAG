@@ -113,5 +113,7 @@ def test_reindex_does_not_duplicate(tmp_path: Path) -> None:
     pipeline = Pipeline(cfg, cfg.rags["miethaus"], embedder=embedder)
     pipeline.index()
     report = pipeline.index()
-    assert report.chunks == 1
+    # The second run reads nothing: the file's fingerprint is unchanged (B12).
+    assert report.unchanged == 1
+    assert report.chunks == 0
     assert pipeline.store.count("miethaus") == 1

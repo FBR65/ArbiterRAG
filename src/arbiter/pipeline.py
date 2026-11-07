@@ -50,6 +50,7 @@ class IndexReport:
     textless_pages: int = 0
     ocr_pages: int = 0
     duplicates: int = 0
+    unchanged: int = 0
     entfernt: int = 0
     warnings: list[str] = field(default_factory=list)
 
@@ -124,11 +125,22 @@ class Pipeline:
         self.gate_logprobs: Callable[[str, str], dict[str, float]] | None = None
 
     def index(self) -> IndexReport:
+        # The check comes first: an unchanged file is not read again, so OCR and
+        # embedding are not paid twice for it. Skipped files keep their rows.
+        bekannt = self.store.fingerprints(self.rag.name)
+        einstellungen = self._ingest_einstellungen()
+
+        def unveraendert(relative: str, kennung: str) -> bool:
+            return bekannt.get(relative) == kennung
+
         loaded = load_corpus(
             self.rag.corpus_path,
             self.rag.extensions,
             ocr=self._ocr_hook(),
             sprache=self.rag.sprache,
+            ocr_alle=self.rag.ocr_alle_seiten,
+            unveraendert=unveraendert,
+            einstellungen=einstellungen,
         )
         report = IndexReport(
             files=len({doc.quelle for doc in loaded.documents}),
@@ -136,6 +148,7 @@ class Pipeline:
             textless_pages=loaded.textless_pages,
             ocr_pages=sum(1 for doc in loaded.documents if doc.ocr),
             duplicates=loaded.duplicates,
+            unchanged=loaded.unchanged,
             warnings=list(loaded.warnings),
         )
         if not loaded.documents:
@@ -186,9 +199,13 @@ class Pipeline:
 
         report.chunks = len(filled)
         report.changed = self.store.upsert(self.rag.name, filled)
-        report.entfernt = self.store.purge(
-            self.rag.name, {document.quelle for document in loaded.documents}
-        )
+        # Skipped files are still part of the corpus; without this line purge would
+        # delete their rows the moment they are skipped.
+        vorhanden = {document.quelle for document in loaded.documents} | set(loaded.fingerprints)
+        report.entfernt = self.store.purge(self.rag.name, vorhanden)
+        for relative, kennung in loaded.fingerprints.items():
+            if kennung:
+                self.store.set_fingerprint(self.rag.name, relative, kennung)
         self.store.ensure_fts(self.rag.name, stem=self.rag.fts_stem)
         return report
 
@@ -518,6 +535,29 @@ class Pipeline:
         text = self.hyde(question, self.rag.description)
         return truncate(str(text), self.rag.hyde_max_chars).strip()
 
+    def _ingest_einstellungen(self) -> str:
+        """Everything that changes the text of a file, as one string.
+
+        Part of the file fingerprint: if one of these values changes, the file is read
+        again instead of being skipped.
+        """
+        rag = self.rag
+        return "|".join(
+            str(wert)
+            for wert in (
+                rag.chunk_chars,
+                rag.chunk_overlap,
+                rag.ocr,
+                rag.ocr_alle_seiten,
+                rag.ocr_dpi,
+                rag.ocr_dpi_paddle,
+                rag.sprache,
+                self.config.backends.ocr_dots_model,
+                self.config.backends.ocr_paddle_model,
+                self.config.backends.embed_model,
+            )
+        )
+
     def _ocr_hook(self) -> OcrHook | None:
         """Both OCR models run on the same rendering; dots-mocr supplies the text."""
         if not self.rag.ocr:
@@ -525,12 +565,16 @@ class Pipeline:
         backends = self.config.backends
         dots = VisionOcr(backends.base_url, backends.ocr_dots_model)
         paddle = VisionOcr(backends.base_url, backends.ocr_paddle_model)
-        dpi = self.rag.ocr_dpi
+        dpi_dots = self.rag.ocr_dpi
+        dpi_paddle = self.rag.ocr_dpi_paddle
 
         def hook(path: Path, page_number: int) -> OcrPage:
-            png = render_png(path, page_number, dpi)
-            indexed = dots_to_text(dots.text_from_png(png))
-            zweitmeinung = paddle.text_from_png(png, prompt=PADDLE_PROMPT)
+            # Both engines get their own rendering, as in DocPipeline: dots reads the
+            # layout at 200 dpi, paddle reads the text at 300 dpi with its own prompt.
+            png_dots = render_png(path, page_number, dpi_dots)
+            indexed = dots_to_text(dots.text_from_png(png_dots))
+            png_paddle = render_png(path, page_number, dpi_paddle)
+            zweitmeinung = paddle.text_from_png(png_paddle, prompt=PADDLE_PROMPT)
             return OcrPage(
                 text=indexed,
                 vergleich=zweitmeinung,

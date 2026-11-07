@@ -59,8 +59,8 @@ MUTANTS = [
     Mutant(
         "cli-unknown-rag-succeeds",
         "src/arbiter/cli.py",
-        "return EXIT_USAGE\n\n    try:",
-        "return EXIT_OK\n\n    try:",
+        "        return EXIT_USAGE\n\n    def build() -> Pipeline:",
+        "        return EXIT_OK\n\n    def build() -> Pipeline:",
     ),
     Mutant(
         "pipeline-skips-question-length-check",

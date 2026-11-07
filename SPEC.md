@@ -1,0 +1,252 @@
+# ArbiterRAG — SPEC
+
+**Status:** freigegeben 2026-11-07 (rev. 2, Antworten D1–D9 eingearbeitet). Offen: D10–D12.
+**Zweck:** RAG-System mit HyDE, Reranker und Laya als Entscheidungsschicht.
+**Arbeitsverzeichnis:** `/home/speedy/Dokumente/dev/ArbiterRAG`
+
+Diese SPEC ist der Vertrag. Jede Änderung wird sichtbar ergänzt, nie still
+überschrieben.
+
+---
+
+## 1. Was das System tut
+
+Drei Stufen, jede mit einer eigenen Aufgabe:
+
+| Stufe | Aufgabe | Wirkung |
+|---|---|---|
+| HyDE | erzeugt ein hypothetisches Antwortdokument und sucht damit zusätzlich | verändert die **Kandidatenmenge** (Recall) |
+| Reranker | bewertet jedes Paar `(Frage, Passage)` und ordnet | verändert die **Reihenfolge** |
+| Laya | beantwortet typisierte Fragen über State und Passagen | verändert **Annahme und Auswahl**, nicht die Reihenfolge |
+
+Der Kern: Der Reranker kann nicht sagen „keine dieser Passagen belegt die
+Antwort". Laya kann es. ArbiterRAG trennt Ordnen von Urteilen.
+
+## 2. Festlegungen
+
+| # | Festlegung | Begründung |
+|---|---|---|
+| F1 | Python 3.12, `uv` für alles (`uv sync`, `uv run`) | Hausregel |
+| F2 | Vektorstore LanceDB, eine Tabelle pro RAG | FTS und Vektor in einem Store |
+| F3 | Embeddings `bge-m3` (1024 Dimensionen) über llama-swap `/v1/embeddings` | Modell liegt bereit, MIT-Lizenz |
+| F4 | Hybrid = dichte Suche **plus** LanceDB-Volltextsuche, Fusion über RRF (k=60) | der Embedding-Endpunkt liefert nur dichte Vektoren, keine lexikalischen Gewichte; FTS ersetzt den sparse-Teil |
+| F5 | Alle Backends über HTTP, Basis-URL per Umgebungsvariable | kein Modell im Prozess, testbar |
+| F6 | Backends hinter Protokollen, Unit-Tests laufen mit Fakes | kein Netz in Unit-Tests |
+| F7 | Ein neuer Korpus ist ein neuer YAML-Eintrag, kein neuer Code | Hausregel |
+| F8 | Oberfläche und Meldungen auf Deutsch | Hausregel |
+| F9 | **Jeder Modellaufruf ist OpenAI-kompatibel**: Chat über `/v1/chat/completions`, Embeddings über `/v1/embeddings`, Reranking über `/v1/rerank`. Laya ausschließlich über `/v1/systemone`. | Vorgabe Frank 2026-11-07 |
+
+## 3. Entscheidungen
+
+### Beantwortet (2026-11-07)
+
+| ID | Frage | Antwort | Folge |
+|---|---|---|---|
+| D1 | `GenericRAG` lesen? | **b** — nur lesen, Code neu | Konventionen übernehmen, kein Code kopieren |
+| D2 | Korpus | **PDF** | PDF-Extraktor nötig (Abhängigkeit `pypdf`), Verhalten B2 |
+| D3 | HyDE | **b** — Schalter, Default an, Original- und HyDE-Suche fusioniert | Verhalten D2 |
+| D4 | HyDE-Modell | **llama-swap** | Modell-ID ist Konfigurationswert; Vorgabe `gemma-4-12B` (kein chinesisches Modell) |
+| D5 | Reranker | **a** — HTTP `/v1/rerank` | Eintrag `bge-reranker-v2-m3` ist defekt, siehe D11 |
+| D6 | Laya-Umfang | **c** — Gate, Auswahl **und** Widerspruch/Mengenprüfung | Verhalten F7; Schwellen brauchen das Goldset |
+| D7 | Laya-Ausfall | **b** — keine Antwort | Verhalten F6, fail-closed |
+| D8 | Antwort erzeugen | **a** — ja, abschaltbar | Verhalten G |
+| D9 | Goldset | **b** — eigener Korpus, 30–40 originale deutsche Fragen | Stufe 5 |
+
+### Offen
+
+| ID | Frage | Optionen | Empfehlung |
+|---|---|---|---|
+| D10 | PDF **ohne Textebene** (Scan) | (a) überspringen, Seiten zählen und melden (b) OCR über llama-swap (`dots-mocr`) als Fallback (c) Abbruch | **(a)** in Stufe 1, Zahl der leeren Seiten berichten; (b) als eigene Stufe, weil OCR die Laufzeit um Größenordnungen erhöht |
+| D11 | Reranker-Eintrag ist defekt: `-m` zeigt auf ein safetensors-Verzeichnis, llama-server kann das nicht laden (`upstream command exited prematurely`). Kein GGUF vorhanden. | (a) GGUF jetzt laden und Eintrag reparieren (b) in Stufe 3, wenn der Reranker gebraucht wird (c) anderes Reranker-Modell | **(b)** — Stufe 1 braucht keinen Reranker |
+| D12 | Pfad des PDF-Korpus für den ersten echten Lauf | Pfad | — |
+
+## 4. Verhalten (Abnahmekriterien)
+
+Jedes Verhalten wird als Test geschrieben, rot gesehen, dann grün gemacht.
+
+### A. Konfiguration
+
+- **A1** Eine YAML-Datei beschreibt je RAG: Name, Beschreibung, Korpuspfad,
+  Dateiendungen, `top_k` je Stufe, Schwellen, Modell-IDs, Basis-URLs. Fehlt ein
+  Pflichtfeld, bricht der Start mit einer Meldung ab, die Feld und Datei nennt.
+- **A2** `${VAR}` wird aus der Umgebung ersetzt. Ist die Variable leer, bricht
+  der Start ab. Ein leerer Standardwert ist unzulässig.
+- **A3** Ein unbekannter Schlüssel ist ein Fehler, keine stille Auslassung.
+- **A4** Modell-IDs und URLs sind Konfigurationswerte. Kein Modellname steht im
+  Code.
+
+### B. Indexierung
+
+- **B1** `arbiter index <rag>` liest alle Dateien der konfigurierten Endungen
+  unter dem Korpuspfad, rekursiv.
+- **B2** PDF werden über `pypdf` gelesen, seitenweise. Hat eine Seite keinen
+  Text, wird sie gezählt, nicht als Fehler behandelt (D10).
+- **B3** Jeder Datensatz hat `id`, `text`, `quelle`, `seite` (bei PDF), `hash`
+  (SHA-256 des Textes) und `vector`.
+- **B4** Eine erneute Indexierung fügt unveränderte Dateien nicht doppelt ein;
+  geänderte ersetzen ihren alten Datensatz. Maßgeblich ist der Hash.
+- **B5** Eine Datei ohne lesbaren Text erzeugt eine Warnung mit Pfad; die
+  Indexierung läuft weiter. Am Ende stehen die Zahl der übersprungenen Dateien
+  und der textlosen Seiten.
+- **B6** Text wird in Abschnitte von höchstens 1200 Zeichen geteilt, an
+  Absatzgrenzen, mit 100 Zeichen Überlappung. Abschnitts-ID ist
+  `<quelle>#<seite>#<laufende Nummer>`.
+- **B7** Nach der Indexierung existiert ein Volltextindex auf `text`. Eine Suche
+  ohne diesen Index ist ein Fehler, kein leeres Ergebnis.
+
+### C. Suche und Fusion
+
+- **C1** Dichte Suche liefert die `n` nächsten Nachbarn nach Kosinus, absteigend
+  sortiert.
+- **C2** Volltextsuche liefert die `n` besten Treffer nach BM25, absteigend.
+- **C3** RRF fusioniert mit `k=60`: `score = Σ 1/(60 + rang)`. Gleicher Score
+  bedeutet Sortierung nach `id` aufsteigend — die Ausgabe ist bei gleicher
+  Eingabe gleich.
+- **C4** Die Fusion schneidet auf `fuse_top_k` (Default 20) ab.
+
+### D. HyDE
+
+- **D1** Das HyDE-Dokument wird aus Frage und RAG-Beschreibung über
+  `/v1/chat/completions` erzeugt und auf `hyde_max_chars` (Default 800) gekürzt.
+- **D2** Ist HyDE eingeschaltet (Default an, D3=b), laufen zwei Suchen und
+  werden fusioniert: eine mit der Originalfrage, eine mit dem HyDE-Dokument.
+- **D3** Schlägt der HyDE-Aufruf fehl, läuft die Suche mit der Originalfrage
+  weiter. Genau eine Warnung mit Fehlergrund. Kein Abbruch, kein stiller
+  Ausfall.
+- **D4** Das erzeugte Dokument wird im Ergebnis mitgeführt (`hyde_text`), damit
+  sichtbar ist, was gesucht wurde.
+
+### E. Reranking
+
+- **E1** Die `fuse_top_k` Kandidaten werden über `/v1/rerank` gegen die Frage
+  bewertet; die Ausgabe enthält `rerank_top_n` (Default 5) Passagen.
+- **E2** Die Reihenfolge folgt dem Reranker-Score absteigend. Bei Gleichstand
+  gilt die vorherige Reihenfolge (stabile Sortierung).
+- **E3** Fällt der Reranker aus, wird die RRF-Reihenfolge ausgegeben, mit einer
+  Warnung und dem Feld `rerank: "ausgefallen"`.
+- **E4** Der Score jeder Passage steht im Ergebnis. Er ist **keine**
+  Wahrscheinlichkeit und wird nie als Schwelle benutzt.
+
+### F. Laya
+
+- **F1** Für jede Passage der Reranker-Ausgabe wird eine `noul`-Frage gestellt:
+  „Beantwortet dieser Text die Frage?" Alle Fragen gehen in **einem** Request an
+  `/v1/systemone`.
+- **F2** Eine Passage gilt als zulässig, wenn `p(true) >= laya_schwelle`
+  (Default 0.50).
+- **F3** Ist keine Passage zulässig, liefert das System keine Antwort, sondern
+  den Grund `keine belegte Passage` und die geprüften Passagen mit ihren
+  Wahrscheinlichkeiten. Der Antwortschritt wird nicht aufgerufen.
+- **F4** Je zulässiger Passage wird eine `score`-Frage mit fester Rubrik gestellt
+  (Deckung: keine / randlich / teilweise / vollständig). Die Auswahl folgt
+  diesem Score, nicht dem Reranker-Score.
+- **F5** Fehlt im Antwortkörper ein erwarteter Schlüssel, gilt die Passage als
+  nicht bewertet, `p = 0.0`, mit Hinweis im Ergebnis. Kein Absturz.
+- **F6** Bei HTTP 429/503 wird mit wachsendem Abstand wiederholt (3 Versuche,
+  1/2/4 s). Danach greift D7=b: **keine Antwort**, Grund
+  `Prüfschicht nicht erreichbar`, Exit-Code 1. Kein stilles Durchreichen.
+- **F7** Widerspruchs- und Mengenprüfung (D6=c): Für jedes Paar der zulässigen
+  Passagen wird eine `score`-Frage mit fünfstufiger Rubrik gestellt
+  (unabhängig / gleiches Thema / gleiche Aussage / überwiegend gleich /
+  Paraphrase). Ergebnis:
+  - Paare ab `widerspruch_niveau` gelten als Widerspruch und stehen im Ergebnis.
+  - Paare ab `redundanz_niveau` gelten als redundant; die Passage mit dem
+    niedrigeren Deckungsscore fällt aus der Auswahl.
+  - **Ohne Goldset gibt es keinen Schwellenwert.** Bis Stufe 5 ist F7 reine
+    Berichterstattung (Felder `widerspruch`, `redundanz`), keine Filterung. Das
+    ist Absicht: eine ungeprüfte Schwelle ist schlimmer als keine.
+
+### G. Antwort
+
+- **G1** Die Antwort wird nur aus den zulässigen Passagen über
+  `/v1/chat/completions` gebildet. Jede Aussage trägt die `quelle` der Passage.
+- **G2** Die Antwort nennt die verwendeten Quellen am Ende.
+- **G3** Liefert das Antwortmodell leeren Text, gilt der Lauf als fehlgeschlagen
+  (Exit-Code 1, Meldung), nicht als leere Antwort.
+
+### H. Schnittstelle
+
+- **H1** `arbiter index <rag>` meldet Zahl der Dateien, Abschnitte,
+  übersprungene Dateien und textlose Seiten.
+- **H2** `arbiter search <rag> "<frage>"` gibt die Passagen mit Quelle, Seite,
+  RRF-Rang, Reranker-Score und Laya-Wahrscheinlichkeit als Tabelle aus.
+- **H3** `arbiter ask <rag> "<frage>"` gibt Antwort plus Quellen aus; mit
+  `--json` als maschinenlesbares Objekt.
+- **H4** `arbiter eval <rag>` fährt das Goldset und berichtet Recall@10,
+  nDCG@10 und Antwortrichtigkeit, je Stufe getrennt: nur Fusion, mit HyDE, mit
+  Reranker, mit Laya.
+- **H5** Die CLI ist ein dünner Client der Bibliothek.
+
+### I. Fehlerfälle
+
+- **I1** Unbekannter RAG-Name: Meldung mit Liste der bekannten Namen, Exit 2.
+- **I2** Leerer Korpus: Meldung `Korpus leer` mit Pfad, Exit 1.
+- **I3** Frage länger als `max_frage_zeichen` (Default 2000): Abbruch mit
+  Meldung, kein stilles Kürzen.
+
+## 5. Was das System nicht tun darf
+
+- **N1** Eine Passage ohne Quellenangabe in die Antwort aufnehmen.
+- **N2** Einen Reranker-Score als Wahrscheinlichkeit ausgeben oder als Schwelle
+  verwenden.
+- **N3** Bei fehlender Belegstelle trotzdem antworten.
+- **N4** Im Fehlerfall stillschweigend auf eine andere Stufe ausweichen, ohne
+  Warnung im Ergebnis.
+- **N5** Modellgewichte oder Netzzugriffe in Unit-Tests laden. Netztests nur
+  hinter `-m integration`.
+- **N6** Fremde Verzeichnisse außerhalb des Arbeitsverzeichnisses lesen, ohne
+  dass D1 es erlaubt.
+- **N7** Persönliche Daten aus deinen Dokumenten in Code, Tests, Logs oder
+  Commits schreiben. Testdaten sind Platzhalter gleicher Form.
+- **N8** Eine ungeprüfte Schwelle als Filter einsetzen (siehe F7).
+
+## 6. Setup-Plan
+
+Angenommen mit dieser SPEC:
+
+| Punkt | Inhalt |
+|---|---|
+| Projekt | `uv init`, `pyproject.toml`, Python 3.12 |
+| Versionierung | `git init`, Commit bei Freigabe und je Grün/Refactor-Stufe |
+| Test | `pytest`, `pytest-cov`, `hypothesis`; Marker `integration` standardmäßig ausgeschlossen |
+| Statik | `ruff` (Lint + Format), `mypy` |
+| Laufzeit-Abhängigkeiten | `lancedb` (Store), `pyarrow` (von LanceDB verlangt), `numpy` (Vektorrechnung), `httpx` (HTTP-Backends), `pyyaml` (Konfiguration), `pypdf` (PDF-Textebene, BSD-3) |
+| Test-Abhängigkeiten | `pytest`, `pytest-cov`, `hypothesis`, `ruff`, `mypy` |
+| Modell-Abhängigkeiten | `bge-m3` (MIT), `bge-reranker-v2-m3` (Apache-2.0), `laya` multilingual (Apache-2.0) — Lizenzen am 2026-11-07 über die Registry geprüft. HyDE- und Antwortmodell aus llama-swap (D4/D8) |
+| Nicht installiert | kein torch, kein FlagEmbedding im Client |
+
+## 7. Stufen mit Stopp-Punkten
+
+Jede Stufe endet mit einem Bericht. Nach jeder Stufe darfst du anhalten; die
+nächste braucht eine neue Freigabe. Aufwände sind Schätzungen.
+
+| Stufe | Inhalt | Verhalten | Aufwand |
+|---|---|---|---|
+| 1 | Gerüst, Konfiguration, PDF-Index, Hybrid, RRF, CLI `index`/`search` | A, B, C, H1–H2, I | ~1 Tag |
+| 2 | HyDE | D | ~0.5 Tag |
+| 3 | Reranker über `/v1/rerank` (setzt D11 voraus) | E | ~0.5 Tag |
+| 4 | Laya: Gate, Auswahl, Widerspruch/Mengen (Bericht) | F, H3 | ~1 Tag |
+| 5 | Antwort, Goldset, Schwellen aus der Messung | G, H4, F7 als Filter | ~1 Tag |
+
+## 8. Messung (Stufe 5)
+
+Eigener Korpus, eigene deutsche Fragen — keine Übersetzung eines fremden
+Fragensatzes.
+
+| Kennzahl | Was sie zeigt |
+|---|---|
+| Recall@10 | ob die richtige Passage im Kandidatenpool liegt (Wirkung von HyDE) |
+| nDCG@10 | ob die Reihenfolge stimmt (Wirkung des Rerankers) |
+| Antwortrichtigkeit | ob die Antwort stimmt (Wirkung von Laya) |
+| Falschantwortquote bei nicht beantwortbaren Fragen | der eigentliche Gewinn der Entscheidungsschicht |
+
+Berichtet wird je Stufe getrennt. Ein Ergebnis, das nur insgesamt besser ist,
+sagt nichts.
+
+---
+
+## 9. Stand
+
+Freigabe erteilt 2026-11-07. Stufe 1 beginnt mit RED.
+D10, D11, D12 sind offen; D11 und D12 blockieren erst Stufe 3 bzw. den ersten
+echten Lauf.

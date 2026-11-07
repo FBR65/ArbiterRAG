@@ -110,6 +110,24 @@ MUTANTS = [
         "            if request.rag in running:",
         "            if False:",
     ),
+    Mutant(
+        "chunks-lose-the-document-header",
+        "src/arbiter/pipeline.py",
+        'kopf = f"[{Path(document.quelle).stem}, S. {page}] "',
+        'kopf = ""',
+    ),
+    Mutant(
+        "duplicate-detection-off",
+        "src/arbiter/loaders.py",
+        "    if earlier is not None:",
+        "    if False:",
+    ),
+    Mutant(
+        "choice-gate-ignores-keine",
+        "src/arbiter/pipeline.py",
+        "        if bester == \"keine\" or probabilities[bester] < keine + marge:",
+        "        if False:",
+    ),
 ]
 
 

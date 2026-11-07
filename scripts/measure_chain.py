@@ -38,6 +38,6 @@ for hyde in (False, True):
         else:
             falsch += 1
     print(
-        f"{str(hyde):<6} {antworten:>10} {richtig:>9} {falsch:>7} {len(goldset) - antworten:>10}",
+        f"{hyde!s:<6} {antworten:>10} {richtig:>9} {falsch:>7} {len(goldset) - antworten:>10}",
         flush=True,
     )

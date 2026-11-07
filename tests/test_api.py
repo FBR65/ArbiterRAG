@@ -174,6 +174,28 @@ def test_index_starts_a_job_and_reports_the_numbers(tmp_path: Path) -> None:
     assert status["bericht"]["abschnitte"] == 3
 
 
+def test_ask_returns_answer_or_reason(tmp_path: Path) -> None:
+    from arbiter.pipeline import Antwort
+
+    def factory(_cfg, rag):
+        pipeline = FakePipeline(rag)
+        pipeline.ask = lambda _frage: Antwort(  # type: ignore[method-assign]
+            text=None,
+            grund="keine belegte Passage",
+            quellen=[],
+        )
+        return pipeline
+
+    app, _ = _app(tmp_path, factory=factory)
+    with TestClient(app) as client:
+        response = client.post("/ask", json={"rag": "k", "frage": "Miete?"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["antwort"] is None
+    assert body["grund"] == "keine belegte Passage"
+    assert body["fehler"] is False
+
+
 def test_unknown_job_is_404(tmp_path: Path) -> None:
     app, _ = _app(tmp_path)
     with TestClient(app) as client:

@@ -265,18 +265,21 @@ class Pipeline:
         return [hit.id for hit in dense], [hit.id for hit in fts], hits
 
     def bewerte(self, result: SearchResult) -> Entscheidung:
-        """Ask the decision layer which passages may serve as evidence (spec F)."""
+        """Ask the decision layer which passages may serve as evidence (spec F).
+
+        Measured 2026-11-07: one state holding all passages makes the small
+        multilingual model answer about the whole text — every P(true) came back
+        between 0.98 and 0.99. One state per passage separates a real hit (0.941)
+        from noise (0.001-0.028). So each passage gets its own request.
+        """
         passages = result.passages
         warnungen = list(result.warnungen)
         if not passages:
             return Entscheidung(False, "keine Passage gefunden", [], [], [], warnungen)
 
-        state = build_noul_state(result.question, [passage.text for passage in passages])
-        answers = self._ask_decision(state, build_questions(len(passages)))
-
         zulassungen: list[Zulassung] = []
         for number, passage in enumerate(passages, start=1):
-            prob, note = probability(answers, f"p{number}")
+            prob, note = self._gate(result.question, passage)
             if note:
                 warnungen.append(f"Auszug {number}: {note}")
             if prob >= self.rag.laya_schwelle:
@@ -285,14 +288,12 @@ class Pipeline:
         if not zulassungen:
             return Entscheidung(False, "keine belegte Passage", [], [], [], warnungen)
 
-        deckung = self._ask_decision(state, build_deckung_questions(len(passages)))
-        marker = {passage.id: number for number, passage in enumerate(passages, start=1)}
         zulassungen = [
-            replace(zulassung, deckung=level(deckung, f"d{marker[zulassung.passage.id]}"))
+            replace(zulassung, deckung=self._deckung(result.question, zulassung.passage))
             for zulassung in zulassungen
         ]
 
-        paare = self._pairs(state, zulassungen, marker)
+        paare = self._pairs(result.question, zulassungen)
         auswahl = self._select(zulassungen, paare)
 
         return Entscheidung(
@@ -304,38 +305,42 @@ class Pipeline:
             warnungen=warnungen,
         )
 
-    def _pairs(
-        self, state: str, zulassungen: list[Zulassung], marker: dict[str, int]
-    ) -> list[PaarBefund]:
-        """Compare admissible passages: similarity, contradiction (spec F7)."""
+    def _gate(self, question: str, passage: Passage) -> tuple[float, str | None]:
+        """P(true) that this one passage answers the question (spec F1, F2)."""
+        state = build_noul_state(question, [passage.text])
+        answers = self._ask_decision(state, {"p1": build_questions(1)["p1"]})
+        return probability(answers, "p1")
+
+    def _deckung(self, question: str, passage: Passage) -> float | None:
+        """Coverage level 1..4 for one admissible passage (spec F4)."""
+        state = build_noul_state(question, [passage.text])
+        answers = self._ask_decision(state, {"d1": build_deckung_questions(1)["d1"]})
+        return level(answers, "d1")
+
+    def _pairs(self, question: str, zulassungen: list[Zulassung]) -> list[PaarBefund]:
+        """Compare admissible passages pairwise: similarity, contradiction (F7)."""
         if len(zulassungen) < 2:
             return []
-        pairs = [
-            (marker[zulassungen[i].passage.id], marker[zulassungen[j].passage.id])
-            for i in range(len(zulassungen))
-            for j in range(i + 1, len(zulassungen))
-        ]
-        questions = build_pair_questions(pairs)
-        questions.update(build_widerspruch_questions(pairs))
-        answers = self._ask_decision(state, questions)
-
-        by_marker = {
-            marker[zulassung.passage.id]: zulassung.passage.id for zulassung in zulassungen
-        }
         befunde: list[PaarBefund] = []
-        for first, second in pairs:
-            similar = level(answers, f"v{first}_{second}")
-            widerspruch_p, _ = probability(answers, f"w{first}_{second}")
-            schwelle = self.rag.widerspruch_niveau
-            befunde.append(
-                PaarBefund(
-                    a=by_marker[first],
-                    b=by_marker[second],
-                    aehnlichkeit=similar,
-                    widerspruch_p=widerspruch_p,
-                    widerspruch=schwelle is not None and widerspruch_p >= schwelle,
+        for i in range(len(zulassungen)):
+            for j in range(i + 1, len(zulassungen)):
+                first = zulassungen[i]
+                second = zulassungen[j]
+                state = build_noul_state(question, [first.passage.text, second.passage.text])
+                questions = build_pair_questions([(1, 2)])
+                questions.update(build_widerspruch_questions([(1, 2)]))
+                answers = self._ask_decision(state, questions)
+                widerspruch_p, _ = probability(answers, "w1_2")
+                schwelle = self.rag.widerspruch_niveau
+                befunde.append(
+                    PaarBefund(
+                        a=first.passage.id,
+                        b=second.passage.id,
+                        aehnlichkeit=level(answers, "v1_2"),
+                        widerspruch_p=widerspruch_p,
+                        widerspruch=schwelle is not None and widerspruch_p >= schwelle,
+                    )
                 )
-            )
         return befunde
 
     def _select(self, zulassungen: list[Zulassung], paare: list[PaarBefund]) -> list[Zulassung]:

@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from arbiter import __version__
 from arbiter.config import Config, ConfigError, Rag, load_config
 from arbiter.embedding import EmbeddingError
-from arbiter.output import suchergebnis_json
+from arbiter.output import antwort_json, suchergebnis_json
 from arbiter.pipeline import IndexReport, Pipeline, QuestionTooLong
 from arbiter.store import StoreError
 
@@ -111,6 +111,20 @@ def create_app(
         except EmbeddingError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         return suchergebnis_json(result)
+
+    @app.post("/ask")
+    def ask(request: SearchRequest) -> dict[str, Any]:
+        """Answer with sources, or a reason why there is none (spec P10)."""
+        pipeline = pipeline_for(request.rag)
+        try:
+            antwort = pipeline.ask(request.frage)
+        except QuestionTooLong as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except StoreError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except EmbeddingError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return antwort_json(antwort)
 
     @app.post("/index", status_code=202)
     def index(request: IndexRequest) -> dict[str, str]:

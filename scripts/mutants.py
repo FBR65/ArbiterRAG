@@ -95,8 +95,8 @@ MUTANTS = [
     Mutant(
         "rerank-scores-land-on-the-first-slot",
         "src/arbiter/rerank.py",
-        "            scores[index] = float(entry[\"relevance_score\"])",
-        "            scores[0] = float(entry[\"relevance_score\"])",
+        '            scores[index] = float(entry["relevance_score"])',
+        '            scores[0] = float(entry["relevance_score"])',
     ),
     Mutant(
         "laya-accepts-every-passage",

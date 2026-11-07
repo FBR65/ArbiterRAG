@@ -175,10 +175,15 @@ Jedes Verhalten wird als Test geschrieben, rot gesehen, dann grün gemacht.
   über alle Kandidaten plus `keine`, Zulassung nur mit Vorsprung `gate_marge` vor
   `keine`) oder `aus` (kein Modellaufruf, die Reranker-Reihenfolge entscheidet;
   dient als Vergleichsgröße).
-  *Gemessen 2026-11-07 auf dem Goldset, richtige Belegstelle je Antwort: `aus`
-  19 von 23, `noul` 10 von 23, `choice` 2 von 23. Die Entscheidungsschicht mit
-  laya-multilingual entfernt in dieser Form gute Antworten und keine schlechten;
-  Default ist deshalb `aus`, bis ein belastbarer Gate-Modus gemessen ist.*
+- **F9** `gate_modus: logprob` entscheidet über die Wahrscheinlichkeit eines
+  einzelnen Tokens: `qwen2.5-7b-instruct` antwortet auf „Beantwortet der Text die
+  Frage?" mit `ja` oder `nein`, `top_logprobs` liefert die Alternativen, die
+  Summe über alle `ja`-Token ist P(ja). Prompt-Variante über `gate_prompt`
+  (`teil` ist Default). Fehlen die Logprobs, zählt keine Wahrscheinlichkeit —
+  die Passage wird nicht zugelassen und eine Warnung ausgegeben.
+  *Gemessen 2026-11-07: Prompt „teil" trennt (nicht beantwortbar ≤ 0,091,
+  beantwortbar Median 1,000); in der Kette 22 Antworten, 14 richtige Belege,
+  1 falsche — gegen 8 falsche ohne Gate. Default.*
 - **F2** Eine Passage gilt als zulässig, wenn `p(true) >= laya_schwelle`
   (Default 0.50).
 - **F3** Ist keine Passage zulässig, liefert das System keine Antwort, sondern

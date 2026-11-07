@@ -99,6 +99,38 @@ gut genug: die Verteilungen überlappen, und im Betrieb kostet sie richtige
 Antworten. `pruefung: false` bleibt der Default; der Code und die Messung bleiben
 erhalten.
 
+## E3 — drittes Modell: Qwen über Logprobs (gefunden)
+
+`qwen2.5-7b-instruct` antwortet mit **einem** Token auf „Beantwortet der Text die
+Frage?"; `top_logprobs` liefert die Alternativen, daraus wird die Wahrscheinlichkeit
+für `ja` gebildet (`ja_wahrscheinlichkeit`). Ein Chat-Modell ist nicht kalibriert —
+deshalb der Prompt-Vergleich, alle drei auf demselben Goldset:
+
+| Prompt | P(ja) beantwortbar (Median) | P(ja) nicht beantwortbar (max) | beantwortet bei Schwelle 0,9 |
+|---|---|---|---|
+| „streng" (ganze Antwort muss im Text stehen) | 0,997 | 0,000 | 14/23, 0/8 falsch |
+| **„teil" (Angaben, die zur Antwort nötig sind)** | **1,000** | **0,091** | **21/23, 0/8 falsch** |
+| „beleg" (enthält die Information) | 0,986 | 0,001 | 14/23, 0/8 falsch |
+
+Der Prompt entscheidet, nicht das Modell. Mit „teil" trennt die Verteilung sauber:
+nicht beantwortbare Fragen erreichen höchstens 0,091, beantwortbare im Median 1,000.
+Der Schwellenwert ist zwischen 0,3 und 0,9 beliebig — es gibt einen echten Graben.
+
+Kette mit `gate_modus: logprob`, `gate_prompt: teil`, Schwelle 0,5:
+
+| Gate | Antworten | Beleg ok | falsch |
+|---|---|---|---|
+| `aus` | 31 | 19 | **8** |
+| `noul` (Laya) | 29 | 10 | 8 |
+| `choice` (Laya) | 10 | 2 | 21 |
+| `logprob`, Prompt „streng" | 15 | 10 | 8 |
+| **`logprob`, Prompt „teil"** | **22** | **14** | **1** |
+
+**Ergebnis:** Das ist der erste Gate-Modus, der die gestellte Aufgabe löst. Er
+kostet fünf richtige Antworten (19 → 14), nimmt aber sieben von acht Falschantworten
+weg (8 → 1). Für ein System, das nicht lügen soll, ist das der bessere Tausch —
+und es ist der einzige, den die Messung stützt. Default ist deshalb `logprob`.
+
 ## Endstand der Kette
 
 | Stufe | Recall@10 | nDCG@10 | Beleg ok (von 23) |

@@ -190,6 +190,50 @@ def choice_probabilities(answers: dict[str, Any], key: str = "wahl") -> dict[str
     return {str(option): float(value) for option, value in probabilities.items()}
 
 
+def ja_wahrscheinlichkeit(verteilung: dict[str, float]) -> float | None:
+    """Sum the probability of every token that means yes (role: logprob gate)."""
+    if not verteilung:
+        return None
+    ja = 0.0
+    nein = 0.0
+    for token, wert in verteilung.items():
+        wort = token.strip().strip(".,!;:").casefold()
+        if wort.startswith("ja"):
+            ja += wert
+        elif wort.startswith("nein"):
+            nein += wert
+    if ja == 0.0 and nein == 0.0:
+        return None
+    return ja
+
+
+def build_ja_nein_prompt(question: str, passage: str, variante: str = "streng") -> tuple[str, str]:
+    """System and user message for a single-token yes/no decision.
+
+    ``streng`` demands the whole answer in the text, ``teil`` accepts a partial
+    clue, ``beleg`` asks whether the text contains the answer at all.
+    """
+    if variante == "teil":
+        system = (
+            "Du prüfst, ob ein Text zur Beantwortung einer Frage beiträgt. "
+            "Antworte mit genau einem Wort: ja oder nein. Antworte mit ja, wenn "
+            "der Text Angaben enthält, die für die Antwort nötig sind — auch wenn "
+            "sie allein nicht ausreichen."
+        )
+    elif variante == "beleg":
+        system = (
+            "Enthält der Text die Information, nach der die Frage fragt? Antworte "
+            "mit genau einem Wort: ja oder nein."
+        )
+    else:
+        system = (
+            "Du prüfst, ob ein Text eine Frage beantwortet. Antworte mit genau einem "
+            "Wort: ja oder nein. Antworte mit ja nur, wenn die Antwort auf die Frage "
+            "wirklich im Text steht."
+        )
+    return system, f"Frage: {question}\n\nText: {passage}"
+
+
 def probability(answers: dict[str, Any], key: str) -> tuple[float, str | None]:
     """P(true) of one ``noul`` answer; a missing key is 0.0 with a note."""
     entry = answers.get(key)

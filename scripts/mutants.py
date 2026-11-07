@@ -128,6 +128,18 @@ MUTANTS = [
         '        if bester == "keine" or probabilities[bester] < keine + marge:',
         "        if False:",
     ),
+    Mutant(
+        "logprob-gate-ignores-the-threshold",
+        "src/arbiter/pipeline.py",
+        "            if p >= self.rag.laya_schwelle:",
+        "            if True:",
+    ),
+    Mutant(
+        "logprob-probability-ignores-the-no-tokens",
+        "src/arbiter/decision.py",
+        '        elif wort.startswith("nein"):',
+        "        elif False:",
+    ),
 ]
 
 

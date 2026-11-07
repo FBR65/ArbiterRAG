@@ -7,6 +7,8 @@ The document is deliberately kept short: it is a query, not an answer.
 
 from __future__ import annotations
 
+import math
+
 import httpx
 
 SYSTEM_TEMPLATE = (
@@ -62,6 +64,45 @@ class ChatClient:
         except (KeyError, IndexError) as exc:
             raise ChatError(f"{self._model}: Antwort ohne Text") from exc
         return str(content).strip()
+
+    def probabilities(self, system: str, user: str, top_n: int = 20) -> dict[str, float]:
+        """Probability per candidate first token (spec: gate over logprobs).
+
+        The model answers with one token. ``top_logprobs`` gives the alternatives;
+        a softmax over those alternatives is the probability of the answer. An
+        answer without logprobs yields an empty map — the caller must not invent
+        a probability in that case.
+        """
+        payload = {
+            "model": self._model,
+            "temperature": 0.0,
+            "max_tokens": 1,
+            "logprobs": True,
+            "top_logprobs": top_n,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        }
+        try:
+            response = self._client.post("/v1/chat/completions", json=payload)
+        except httpx.HTTPError as exc:
+            raise ChatError(f"{self._model}: nicht erreichbar ({exc})") from exc
+        if response.status_code != 200:
+            raise ChatError(f"{self._model}: HTTP {response.status_code} — {response.text[:200]}")
+        try:
+            content = response.json()["choices"][0]["logprobs"]["content"][0]
+            alternatives = content["top_logprobs"]
+        except (KeyError, IndexError, TypeError):
+            return {}
+
+        logprobs = {str(entry["token"]): float(entry["logprob"]) for entry in alternatives}
+        if not logprobs:
+            return {}
+        hoechster = max(logprobs.values())
+        gewichte = {token: math.exp(wert - hoechster) for token, wert in logprobs.items()}
+        summe = sum(gewichte.values())
+        return {token: gewicht / summe for token, gewicht in gewichte.items()}
 
     def close(self) -> None:
         self._client.close()

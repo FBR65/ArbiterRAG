@@ -22,6 +22,7 @@ from arbiter.decision import (
     SystemOne,
     build_choice_questions,
     build_deckung_questions,
+    build_ja_nein_prompt,
     build_noul_state,
     build_pair_questions,
     build_questions,
@@ -29,6 +30,7 @@ from arbiter.decision import (
     build_stuetzen_state,
     build_widerspruch_questions,
     choice_probabilities,
+    ja_wahrscheinlichkeit,
     level,
     probability,
 )
@@ -142,6 +144,7 @@ class Pipeline:
         # Callable(state, questions) -> answers map; and Callable(system, user) -> text.
         self.decision: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None
         self.answerer: Callable[[str, str], str] | None = None
+        self.gate_logprobs: Callable[[str, str], dict[str, float]] | None = None
 
     def index(self) -> IndexReport:
         loaded = load_corpus(self.rag.corpus_path, self.rag.extensions, ocr=self._ocr_hook())
@@ -304,6 +307,8 @@ class Pipeline:
 
         if self.rag.gate_modus == "choice":
             return self._bewerte_choice(result, passages, warnungen)
+        if self.rag.gate_modus == "logprob":
+            return self._bewerte_logprob(result, passages, warnungen)
         if self.rag.gate_modus == "aus":
             # No decision call: the reranker order alone decides. This exists to
             # measure what the decision layer adds, not as a production default.
@@ -364,6 +369,37 @@ class Pipeline:
         zulassung = Zulassung(passage=passage, p=probabilities[bester])
         zulassung = replace(zulassung, deckung=self._deckung(result.question, passage))
         return Entscheidung(True, None, [zulassung], [zulassung], [], warnungen)
+
+    def _bewerte_logprob(
+        self, result: SearchResult, passages: list[Passage], warnungen: list[str]
+    ) -> Entscheidung:
+        """Gate over single-token yes/no probabilities of the chat model."""
+        zulassungen: list[Zulassung] = []
+        for passage in passages:
+            system, user = build_ja_nein_prompt(result.question, passage.text, self.rag.gate_prompt)
+            try:
+                verteilung = self._logprobs(system, user)
+            except Exception as exc:
+                warnungen.append(f"Prüfschicht nicht erreichbar: {exc}")
+                continue
+            p = ja_wahrscheinlichkeit(verteilung)
+            if p is None:
+                warnungen.append("Prüfschicht lieferte keine Logprobs")
+                continue
+            if p >= self.rag.laya_schwelle:
+                zulassungen.append(Zulassung(passage=passage, p=p))
+
+        if not zulassungen:
+            return Entscheidung(False, "keine belegte Passage", [], [], [], warnungen)
+        auswahl = sorted(zulassungen, key=lambda item: item.p, reverse=True)[:3]
+        return Entscheidung(True, None, zulassungen, auswahl, [], warnungen)
+
+    def _logprobs(self, system: str, user: str) -> dict[str, float]:
+        """Logprob map of the chat model; injectable for tests."""
+        if self.gate_logprobs is not None:
+            return self.gate_logprobs(system, user)
+        client = ChatClient(self.config.backends.base_url, self.config.backends.chat_model)
+        return client.probabilities(system, user)
 
     def _pruefe_antwort(self, antwort: str, quellen: list[Quelle]) -> float:
         """Laya as answer checker: how well do the sources support the answer?

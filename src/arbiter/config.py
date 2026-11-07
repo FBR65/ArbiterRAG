@@ -55,6 +55,7 @@ class Rag:
     gate_modus: str = "noul"
     gate_marge: float = 0.1
     gate_prompt: str = "teil"
+    kombi: bool = False
     pruefung: bool = False
     pruefung_schwelle: float = 0.5
     widerspruch_niveau: float | None = None
@@ -100,6 +101,7 @@ _RAG_KEYS = {
     "gate_modus",
     "gate_marge",
     "gate_prompt",
+    "kombi",
     "pruefung",
     "pruefung_schwelle",
     "widerspruch_niveau",
@@ -216,6 +218,7 @@ def _rag(name: str, entry: Any, filename: str) -> Rag:
         gate_modus=str(entry.get("gate_modus", "noul")),
         gate_marge=float(entry.get("gate_marge", 0.1)),
         gate_prompt=str(entry.get("gate_prompt", "teil")),
+        kombi=bool(entry.get("kombi", False)),
         pruefung=bool(entry.get("pruefung", False)),
         pruefung_schwelle=float(entry.get("pruefung_schwelle", 0.5)),
         widerspruch_niveau=(

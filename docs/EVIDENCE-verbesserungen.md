@@ -131,6 +131,26 @@ kostet fünf richtige Antworten (19 → 14), nimmt aber sieben von acht Falschan
 weg (8 → 1). Für ein System, das nicht lügen soll, ist das der bessere Tausch —
 und es ist der einzige, den die Messung stützt. Default ist deshalb `logprob`.
 
+## E4 — Kombination Qwen-Gate und Laya (gemessen, verworfen)
+
+Zwei Modelle auf **verschiedene** Rollen verteilt: Qwen entscheidet über die
+Zulassung, Laya vergleicht die zugelassenen Passagen paarweise (Redundanz,
+Widerspruch). `kombi: true`, Gate bleibt `logprob`.
+
+| Einstellung | Antworten | Beleg ok | falsch |
+|---|---|---|---|
+| nur Qwen-Gate | 22 | **15** | 1 |
+| + Laya, Redundanz ab 3,0 | 22 | 10 | 1 |
+| + Laya, nur Widerspruch ab 0,8 | 22 | 11 | 1 |
+
+Beide Kombinationen kosten richtige Antworten, keine Falschantwort geht zusätzlich
+weg. Laya verwirft Passagen als redundant oder widersprüchlich, die den Beleg
+tragen. `kombi: false` bleibt.
+
+Nebenbefund: Zwei Läufe derselben Konfiguration ergaben 14 und 15 richtige Belege.
+Die Kette ist also auf ±1 nicht reproduzierbar; Unterschiede dieser Größe sind
+nicht belegbar.
+
 ## Endstand der Kette
 
 | Stufe | Recall@10 | nDCG@10 | Beleg ok (von 23) |

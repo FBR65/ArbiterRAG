@@ -391,6 +391,15 @@ class Pipeline:
 
         if not zulassungen:
             return Entscheidung(False, "keine belegte Passage", [], [], [], warnungen)
+
+        if self.rag.kombi:
+            # Combination: Qwen decides admission, Laya compares the admitted
+            # passages with each other (redundancy, contradiction). Two different
+            # roles, not two votes on the same question.
+            paare = self._pairs(result.question, zulassungen)
+            auswahl = self._select(zulassungen, paare)[:3]
+            return Entscheidung(True, None, zulassungen, auswahl, paare, warnungen)
+
         auswahl = sorted(zulassungen, key=lambda item: item.p, reverse=True)[:3]
         return Entscheidung(True, None, zulassungen, auswahl, [], warnungen)
 

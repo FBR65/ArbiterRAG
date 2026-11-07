@@ -20,6 +20,19 @@ Antwort". ArbiterRAG trennt Ordnen von Urteilen.
 
 Der Vertrag steht in `SPEC.md`.
 
+## Bedienung
+
+```
+uv run arbiter-tui          # Oberfläche zum Ausprobieren
+uv run arbiter ask downloads "Frage"
+uv run arbiter-api          # HTTP-Dienst auf 127.0.0.1:8091
+```
+
+Die Oberfläche hat ein Eingabefeld, einen Verlauf und eine Statuszeile (RAG, Abschnitte,
+Modus, HyDE, Reranker, Gate). Tasten: `Enter` fragen, `Ctrl+S` Suchen statt Antworten
+(zeigt die Passagen mit Reranker-Score), `Ctrl+I` indexieren, `Ctrl+L` Verlauf leeren,
+`Ctrl+Q` beenden. RAG-Wahl über `ARBITER_RAG`, Konfiguration über `ARBITER_CONFIG`.
+
 ## Aufbau
 
 ```

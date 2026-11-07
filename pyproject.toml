@@ -15,11 +15,13 @@ dependencies = [
     "pillow>=13.0.0",
     "fastapi>=0.162.1",
     "uvicorn[standard]>=0.54.0",
+    "textual>=0.86",
 ]
 
 [project.scripts]
 arbiter = "arbiter.cli:main"
 arbiter-api = "arbiter.api:main"
+arbiter-tui = "arbiter.tui:main"
 
 [dependency-groups]
 dev = [
@@ -29,6 +31,7 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "types-pyyaml>=6.0.12.20261103",
+    "pytest-asyncio>=1.4.1.post1",
 ]
 
 [build-system]

@@ -47,6 +47,8 @@ class Rag:
     ocr: bool = False
     ocr_dpi: int = 200
     rerank: bool = True
+    widerspruch_niveau: float | None = None
+    redundanz_niveau: float | None = None
 
 
 @dataclass(frozen=True)
@@ -80,6 +82,8 @@ _RAG_KEYS = {
     "ocr",
     "ocr_dpi",
     "rerank",
+    "widerspruch_niveau",
+    "redundanz_niveau",
 }
 _REQUIRED_BACKENDS = {
     "base_url",
@@ -184,6 +188,12 @@ def _rag(name: str, entry: Any, filename: str) -> Rag:
         ocr=bool(entry.get("ocr", False)),
         ocr_dpi=int(entry.get("ocr_dpi", 200)),
         rerank=bool(entry.get("rerank", True)),
+        widerspruch_niveau=(
+            None if entry.get("widerspruch_niveau") is None else float(entry["widerspruch_niveau"])
+        ),
+        redundanz_niveau=(
+            None if entry.get("redundanz_niveau") is None else float(entry["redundanz_niveau"])
+        ),
     )
 
 

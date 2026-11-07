@@ -12,9 +12,22 @@ import hashlib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import Any
 
+from arbiter.answer import Quelle, build_answer_prompt
 from arbiter.chunk import chunk_text
 from arbiter.config import Config, Rag
+from arbiter.decision import (
+    DecisionError,
+    SystemOne,
+    build_deckung_questions,
+    build_noul_state,
+    build_pair_questions,
+    build_questions,
+    build_widerspruch_questions,
+    level,
+    probability,
+)
 from arbiter.embedding import HttpEmbedder
 from arbiter.fusion import rrf_many
 from arbiter.hyde import ChatClient, build_prompt, truncate
@@ -56,6 +69,42 @@ class Passage:
 
 
 @dataclass(frozen=True)
+class Zulassung:
+    passage: Passage
+    p: float
+    deckung: float | None = None
+
+
+@dataclass(frozen=True)
+class PaarBefund:
+    a: str
+    b: str
+    aehnlichkeit: float | None
+    widerspruch_p: float | None
+    widerspruch: bool = False
+
+
+@dataclass(frozen=True)
+class Entscheidung:
+    beantwortbar: bool
+    grund: str | None
+    zulassungen: list[Zulassung]
+    auswahl: list[Zulassung]
+    paare: list[PaarBefund]
+    warnungen: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class Antwort:
+    text: str | None
+    grund: str | None
+    quellen: list[Quelle]
+    entscheidung: Entscheidung | None = None
+    fehler: bool = False
+    warnungen: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class SearchResult:
     question: str
     passages: list[Passage]
@@ -84,6 +133,9 @@ class Pipeline:
         self.hyde: Callable[[str, str], str] | None = None
         # Callable(query, documents) -> one score per document.
         self.reranker: Callable[[str, list[str]], list[float]] | None = None
+        # Callable(state, questions) -> answers map; and Callable(system, user) -> text.
+        self.decision: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None
+        self.answerer: Callable[[str, str], str] | None = None
 
     def index(self) -> IndexReport:
         loaded = load_corpus(self.rag.corpus_path, self.rag.extensions, ocr=self._ocr_hook())
@@ -211,6 +263,182 @@ class Pipeline:
         fts = self.store.search_fts(self.rag.name, text, self.rag.top_k_fts)
         hits = {hit.id: hit for hit in reversed(dense + fts)}
         return [hit.id for hit in dense], [hit.id for hit in fts], hits
+
+    def bewerte(self, result: SearchResult) -> Entscheidung:
+        """Ask the decision layer which passages may serve as evidence (spec F)."""
+        passages = result.passages
+        warnungen = list(result.warnungen)
+        if not passages:
+            return Entscheidung(False, "keine Passage gefunden", [], [], [], warnungen)
+
+        state = build_noul_state(result.question, [passage.text for passage in passages])
+        answers = self._ask_decision(state, build_questions(len(passages)))
+
+        zulassungen: list[Zulassung] = []
+        for number, passage in enumerate(passages, start=1):
+            prob, note = probability(answers, f"p{number}")
+            if note:
+                warnungen.append(f"Auszug {number}: {note}")
+            if prob >= self.rag.laya_schwelle:
+                zulassungen.append(Zulassung(passage=passage, p=prob))
+
+        if not zulassungen:
+            return Entscheidung(False, "keine belegte Passage", [], [], [], warnungen)
+
+        deckung = self._ask_decision(state, build_deckung_questions(len(passages)))
+        marker = {passage.id: number for number, passage in enumerate(passages, start=1)}
+        zulassungen = [
+            replace(zulassung, deckung=level(deckung, f"d{marker[zulassung.passage.id]}"))
+            for zulassung in zulassungen
+        ]
+
+        paare = self._pairs(state, zulassungen, marker)
+        auswahl = self._select(zulassungen, paare)
+
+        return Entscheidung(
+            beantwortbar=True,
+            grund=None,
+            zulassungen=zulassungen,
+            auswahl=auswahl,
+            paare=paare,
+            warnungen=warnungen,
+        )
+
+    def _pairs(
+        self, state: str, zulassungen: list[Zulassung], marker: dict[str, int]
+    ) -> list[PaarBefund]:
+        """Compare admissible passages: similarity, contradiction (spec F7)."""
+        if len(zulassungen) < 2:
+            return []
+        pairs = [
+            (marker[zulassungen[i].passage.id], marker[zulassungen[j].passage.id])
+            for i in range(len(zulassungen))
+            for j in range(i + 1, len(zulassungen))
+        ]
+        questions = build_pair_questions(pairs)
+        questions.update(build_widerspruch_questions(pairs))
+        answers = self._ask_decision(state, questions)
+
+        by_marker = {
+            marker[zulassung.passage.id]: zulassung.passage.id for zulassung in zulassungen
+        }
+        befunde: list[PaarBefund] = []
+        for first, second in pairs:
+            similar = level(answers, f"v{first}_{second}")
+            widerspruch_p, _ = probability(answers, f"w{first}_{second}")
+            schwelle = self.rag.widerspruch_niveau
+            befunde.append(
+                PaarBefund(
+                    a=by_marker[first],
+                    b=by_marker[second],
+                    aehnlichkeit=similar,
+                    widerspruch_p=widerspruch_p,
+                    widerspruch=schwelle is not None and widerspruch_p >= schwelle,
+                )
+            )
+        return befunde
+
+    def _select(self, zulassungen: list[Zulassung], paare: list[PaarBefund]) -> list[Zulassung]:
+        """Order by coverage; drop only what a measured threshold permits (spec F7)."""
+        ordered = sorted(
+            zulassungen,
+            key=lambda zulassung: (
+                -(zulassung.deckung if zulassung.deckung is not None else -1.0),
+                zulassung.passage.rrf_rank,
+            ),
+        )
+        drop: set[str] = set()
+        for befund in paare:
+            redundant = (
+                self.rag.redundanz_niveau is not None
+                and befund.aehnlichkeit is not None
+                and befund.aehnlichkeit >= self.rag.redundanz_niveau
+            )
+            if redundant or befund.widerspruch:
+                drop.add(self._weaker(befund, ordered))
+        return [zulassung for zulassung in ordered if zulassung.passage.id not in drop]
+
+    @staticmethod
+    def _weaker(befund: PaarBefund, ordered: list[Zulassung]) -> str:
+        """The passage with less coverage loses; on a tie the later one in the order."""
+        position = {zulassung.passage.id: index for index, zulassung in enumerate(ordered)}
+        return befund.a if position.get(befund.a, 0) > position.get(befund.b, 0) else befund.b
+
+    def ask(self, question: str, hyde: bool | None = None) -> Antwort:
+        """Search, decide, answer — in that order (spec F3, G)."""
+        result = self.search(question, hyde=hyde)
+        try:
+            entscheidung = self.bewerte(result)
+        except DecisionError as exc:
+            return Antwort(
+                text=None,
+                grund="Prüfschicht nicht erreichbar",
+                quellen=[],
+                entscheidung=None,
+                fehler=True,
+                warnungen=[str(exc)],
+            )
+
+        if not entscheidung.beantwortbar:
+            return Antwort(
+                text=None,
+                grund=entscheidung.grund,
+                quellen=[],
+                entscheidung=entscheidung,
+                fehler=False,
+                warnungen=entscheidung.warnungen,
+            )
+
+        quellen = [
+            Quelle(
+                passage_id=zulassung.passage.id,
+                quelle=zulassung.passage.quelle,
+                seite=zulassung.passage.seite,
+                text=zulassung.passage.text,
+            )
+            for zulassung in entscheidung.auswahl[:3]
+        ]
+        system, user = build_answer_prompt(question, quellen)
+        try:
+            text = self._answer_text(system, user).strip()
+        except Exception as exc:
+            return Antwort(
+                text=None,
+                grund="Antwortmodell nicht erreichbar",
+                quellen=quellen,
+                entscheidung=entscheidung,
+                fehler=True,
+                warnungen=[*entscheidung.warnungen, str(exc)],
+            )
+        if not text:
+            return Antwort(
+                text=None,
+                grund="Antwortmodell lieferte keinen Text",
+                quellen=quellen,
+                entscheidung=entscheidung,
+                fehler=True,
+                warnungen=entscheidung.warnungen,
+            )
+        return Antwort(
+            text=text,
+            grund=None,
+            quellen=quellen,
+            entscheidung=entscheidung,
+            fehler=False,
+            warnungen=entscheidung.warnungen,
+        )
+
+    def _ask_decision(self, state: str, questions: dict[str, Any]) -> dict[str, Any]:
+        if self.decision is None:
+            client = SystemOne(self.config.backends.base_url, self.config.backends.laya_model)
+            self.decision = client.ask
+        return self.decision(state, questions)
+
+    def _answer_text(self, system: str, user: str) -> str:
+        if self.answerer is None:
+            client = ChatClient(self.config.backends.base_url, self.config.backends.chat_model)
+            self.answerer = client.complete
+        return str(self.answerer(system, user))
 
     def _rerank_scores(self, question: str, documents: list[str]) -> list[float]:
         if self.reranker is None:

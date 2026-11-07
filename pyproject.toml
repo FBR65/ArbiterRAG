@@ -13,10 +13,13 @@ dependencies = [
     "pypdf>=5.0",
     "pypdfium2>=5.15.0",
     "pillow>=13.0.0",
+    "fastapi>=0.162.1",
+    "uvicorn[standard]>=0.54.0",
 ]
 
 [project.scripts]
 arbiter = "arbiter.cli:main"
+arbiter-api = "arbiter.api:main"
 
 [dependency-groups]
 dev = [

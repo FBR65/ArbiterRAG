@@ -1,0 +1,131 @@
+# Goldset für den Korpus /home/speedy/Downloads (Stand 2026-11-07).
+#
+# Eigene deutsche Fragen, formuliert gegen den Inhalt der PDFs. `quelle` ist ein
+# eindeutiger Namensausschnitt, `seite` die Seitenzahl. Kein Fragensatz aus einer
+# fremden Quelle, keine Übersetzung.
+#
+# `beantwortbar: false` heißt: der Korpus enthält die Antwort nicht. Richtig ist
+# dort "keine Antwort", nicht "irgendeine Antwort".
+
+fragen:
+  - frage: Welcher AWS-Dienst liest den Text aus den Dokumentbildern?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "IDP) system on AWS", seite: 11 }
+      - { quelle: "IDP) system on AWS", seite: 14 }
+  - frage: Wie wird der Verarbeitungslauf zeitgesteuert gestartet?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "IDP) system on AWS", seite: 20 }
+  - frage: Welches Modell klassifiziert die Dokumente bei Amazon Bedrock?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "IDP) system on AWS", seite: 16 }
+  - frage: Wo werden die Gmail-Zugangsdaten hinterlegt?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "IDP) system on AWS", seite: 9 }
+  - frage: Welches Gmail-Label löst die Verarbeitung einer Mail aus?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "IDP) system on AWS", seite: 12 }
+  - frage: Welche Rolle spielt das Model Context Protocol zwischen Sprachmodell und BI-System?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "BI im KI-Zeitalter", seite: 5 }
+  - frage: Warum verändert generative KI die Rolle des BI-Entwicklers?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "BI im KI-Zeitalter", seite: 3 }
+  - frage: Welche Fähigkeiten sind statt reiner technischer Expertise gefragt?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "BI im KI-Zeitalter", seite: 7 }
+  - frage: Was muss ein Sprachmodell über fachliche Begriffe und Kennzahlen wissen?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "BI im KI-Zeitalter", seite: 6 }
+  - frage: Warum wirken Demos überzeugend, obwohl der Betrieb später scheitert?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "Warum LLM-basierte", seite: 3 }
+  - frage: Wer definiert die Bedeutung der Kennzahlen in einem dialogbasierten BI-System?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "Warum LLM-basierte", seite: 6 }
+  - frage: Wie werden automatisch erzeugte SQL-Abfragen abgesichert, bevor sie laufen?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "Warum LLM-basierte", seite: 7 }
+  - frage: Warum treffen dialogbasierte Systeme auf gewachsene BI-Landschaften?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "Warum LLM-basierte", seite: 4 }
+  - frage: Wie groß ist das Modell, das die Agenten-Aufgaben entscheidet?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "Laya _ I Built", seite: 10 }
+      - { quelle: "Laya _ I Built", seite: 17 }
+  - frage: Was erzeugt Laya ausdrücklich nicht?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "Laya _ I Built", seite: 3 }
+  - frage: Wie hoch ist die Trefferquote bei ungesehenen Aufgaben?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "Laya _ I Built", seite: 12 }
+  - frage: Unter welcher Lizenz steht Laya?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "Laya _ I Built", seite: 3 }
+  - frage: Wie viele Beispiel-Eingaben wurden im Test verwendet?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "Laya _ I Built", seite: 7 }
+  - frage: Welche Workload-Typen unterscheidet der Workshop bei der Inferenz?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "Workshop_KI-Inferenz", seite: 10 }
+      - { quelle: "Workshop_KI-Inferenz", seite: 11 }
+  - frage: Warum ist ein Forward-Pass bei Embeddings günstig?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "Workshop_KI-Inferenz", seite: 14 }
+  - frage: Wie geht man beim Benchmarking von Inferenzservern vor?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "Workshop_KI-Inferenz", seite: 104 }
+  - frage: Was steht auf der Best-Practice-Checkliste für den Serving-Stack?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "Workshop_KI-Inferenz", seite: 107 }
+  - frage: Worin unterscheiden sich dichte Modelle und Mixture-of-Experts?
+    beantwortbar: true
+    erwartet:
+      - { quelle: "Workshop_KI-Inferenz", seite: 18 }
+
+  # Nicht beantwortbar: der Korpus enthält diese Angaben nicht.
+  - frage: Wie hoch ist die monatliche Miete für die Wohnung in der Lindenstraße?
+    beantwortbar: false
+    erwartet: []
+  - frage: Welche Fördersumme hat das Bundesministerium für den Ausbau zugesagt?
+    beantwortbar: false
+    erwartet: []
+  - frage: Wie viele Mitarbeiter hat die SVA System Vertrieb Alexander GmbH?
+    beantwortbar: false
+    erwartet: []
+  - frage: Was kostet ein Abonnement bei heise Developer im Monat?
+    beantwortbar: false
+    erwartet: []
+  - frage: Zu welchem Datum wurde der Mietvertrag unterschrieben?
+    beantwortbar: false
+    erwartet: []
+  - frage: Welche Strafe droht bei verspäteter Zahlung der Nebenkosten?
+    beantwortbar: false
+    erwartet: []
+  - frage: Welche Grafikkarte hat der Autor des Laya-Artikels in seinem Rechner?
+    beantwortbar: false
+    erwartet: []
+  - frage: Wie viele Seiten hat das Trennblatt im Original?
+    beantwortbar: false
+    erwartet: []

@@ -19,7 +19,8 @@ result = pipeline.search(frage)
 print(f"Passagen: {len(result.passages)}, rerank={result.rerank}, hyde={bool(result.hyde_text)}")
 for passage in result.passages:
     print(
-        f"  [{passage.rrf_rank}] {passage.quelle[:50]} S{passage.seite} rerank={passage.rerank_score}"
+        f"  [{passage.rrf_rank}] {passage.quelle[:50]} S{passage.seite} "
+        f"rerank={passage.rerank_score}"
     )
 
 state = build_noul_state(frage, [p.text for p in result.passages])

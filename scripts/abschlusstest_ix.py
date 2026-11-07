@@ -1,4 +1,4 @@
-"""Abschlusstest gegen das Heft iX Developer 2026 – Testing (ix.26.13.pdf).
+"""Abschlusstest gegen das Heft iX Developer 2026 - Testing (ix.26.13.pdf).
 
 Die erwarteten Antworten sind vorher am Volltext geprüft worden, nicht aus dem
 Gedächtnis gesetzt. Erwartete Seite = Seite, auf der die Aussage steht.

@@ -18,11 +18,15 @@ cfg = load_config(Path("arbiter.yaml"), os.environ)
 rag = cfg.rags["downloads"]
 goldset = load_goldset(Path("goldset/downloads.yaml"))
 print(f"Embedder: {cfg.backends.embed_model}  DB: {cfg.db_path}", flush=True)
-print(f"{'HyDE':<6} {'Antworten':>10} {'Beleg ok':>9} {'falsch':>7} {'verworfen':>10}", flush=True)
+print(
+    f"{'HyDE':<6} {'Antworten':>10} {'Beleg ok':>9} {'ohne Beleg':>11} "
+    f"{'Zitate':>7} {'verworfen':>10}",
+    flush=True,
+)
 
 for hyde in (False, True):
     pipeline = Pipeline(cfg, replace(rag, hyde=hyde))
-    antworten = richtig = falsch = 0
+    antworten = richtig = falsch = zitate = 0
     for gold in goldset:
         antwort = pipeline.ask(gold.frage)
         if antwort.text is None:
@@ -37,6 +41,8 @@ for hyde in (False, True):
             richtig += 1
         else:
             falsch += 1
+        if (antwort.text or "").startswith("Belegstelle:"):
+            zitate += 1
     print(
         f"{hyde!s:<6} {antworten:>10} {richtig:>9} {falsch:>7} {len(goldset) - antworten:>10}",
         flush=True,

@@ -246,27 +246,40 @@ null" zu viel.
 
 ### Kette auf dem eigenen Goldset (23 beantwortbare Fragen)
 
-| Prüfung der Antwort | Antworten | Beleg ok | **falsch** |
-|---|---|---|---|
-| keine | 21 | 15 | **6** |
-| Satzprüfung, Schwelle 0,3 | 10 | 9 | **1** |
-| Satzprüfung, Schwelle 0,5 | 8 | 8 | **0** |
-| Satzprüfung 0,5 + Nachbesserung | 15 | 12 | **3** |
+| Prüfung der Antwort | Antworten | Beleg ok | ohne Gold-Beleg | davon Zitate |
+|---|---|---|---|---|
+| keine | 21 | 15 | 6 | 0 |
+| Satzprüfung 0,5, Antwort verweigert | 8 | 8 | 0 | 0 |
+| **Satzprüfung 0,5, Sätze streichen, sonst Zitat** | **21** | **16** | **5** | **10** |
 
-**Null ist erreichbar — zum Preis von 13 der 21 Antworten.** Jede Lockerung bringt
-Falschantworten zurück: Schwelle 0,3 eine, die Nachbesserung drei. Die Nachbesserung
-hebt die Abdeckung von 8 auf 15, aber der Text, den sie erzeugt, geht über das
-Geprüfte hinaus.
+Die dritte Zeile ist der eingestellte Ablauf: unbelegte Sätze fallen weg, der Rest wird
+ausgeliefert. Bleibt kein Satz übrig, wird die Belegstelle **wörtlich** zitiert — ein
+Zitat kann per Konstruktion nicht erfunden sein. **Es gibt keine leere Antwort mehr,
+solange das Gate eine Passage zulässt.**
 
-Eingestellt ist die strenge Fassung: `antwort_pruefung: true`, `antwort_schwelle: 0.5`,
+Zwei Zahlen muss man dabei auseinanderhalten:
+
+- **ohne Gold-Beleg (5):** die Antwort zitiert eine Passage, in der die Antwort nicht
+  steht — ein Fehler der Suche, keine Erfindung. Die Antwort sagt dann, was ein anderes
+  Dokument zu dem Thema sagt, und nennt es. Vorher war dieser Fall unsichtbar, weil er
+  als Falschantwort mitgezählt wurde.
+- **Zitate (10):** bei zehn Fragen überlebte kein formulierter Satz die Prüfung, und es
+  wurde die Belegstelle zitiert. Sicher, aber roh. Ursache: die Satzprüfung verwirft
+  korrekte Umformulierungen. Beispiel aus dem Live-Lauf: „Laya steht unter der
+  Apache-2.0-Lizenz" fiel durch, obwohl im Auszug „Laya is by ConvAI Innovations
+  (Apache-2.0)" steht.
+
+**Eingestellt:** `antwort_pruefung: true`, `antwort_schwelle: 0.5`,
 `antwort_reparatur: false`.
 
-**Was diese Null nicht beweist.** Acht Antworten ohne Fehler sind kein Beweis, dass
-der Fehler nie auftritt. Die Kalibrierung zeigt für das Gate 3 Fehlzulassungen auf 500
-negative Fälle; für die Satzprüfung fehlt eine beschriftete Menge. Der nächste Schritt
-wäre, aus Task 4 eine solche Menge zu bauen (Sätze aus beantwortbaren Kontexten als
-„gestützt", Sätze aus fremden Artikeln als „nicht gestützt") und die Fehlakzeptanz der
-Satzprüfung zu messen. Erst dann ist „null" eine belegte Zahl und keine Stichprobe.
+**Was noch fehlt.** Die Satzprüfung ist selbst nicht kalibriert: ich weiß, wie oft sie
+eine falsche Aussage durchlässt, nicht. Ihr Fehler wirkt in beide Richtungen — sie
+verwirft Richtiges (siehe Zitate) und könnte Falsches durchlassen. Eine beschriftete
+Menge lässt sich aus `deepset/germanquad` bauen (Antwortsätze mit Textstelle als
+„gestützt", Sätze aus fremden Artikeln als „nicht gestützt"). Erst danach ist die
+Schwelle 0,5 eine gemessene Zahl und keine Annahme.
+
+## Endstand der Kette
 
 ## Endstand der Kette
 

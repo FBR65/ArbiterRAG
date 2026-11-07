@@ -372,26 +372,18 @@ class Pipeline:
                 warnungen=entscheidung.warnungen,
             )
 
+        zusatz: list[str] = []
         if self.rag.antwort_pruefung:
-            offen = self._unbelegte_aussagen(text, quellen)
-            if offen and self.rag.antwort_reparatur:
-                repariert = self._repariere_antwort(text, quellen)
-                if repariert:
-                    text = repariert
-                    offen = self._unbelegte_aussagen(text, quellen)
-            if offen:
-                return Antwort(
-                    text=None,
-                    grund="Antwort nicht durch die Auszüge gedeckt",
-                    quellen=quellen,
-                    entscheidung=entscheidung,
-                    fehler=False,
-                    warnungen=[
-                        *entscheidung.warnungen,
-                        f"Unbelegte Aussage: {offen[0][:120]}",
-                        *[f"Unbelegte Aussage: {satz[:120]}" for satz in offen[1:]],
-                    ],
-                )
+            behalten, verworfen = self._pruefe_saetze(text, quellen)
+            if verworfen:
+                zusatz = [f"Gestrichen (nicht belegt): {satz[:120]}" for satz in verworfen]
+            if behalten:
+                text = " ".join(behalten)
+            else:
+                # Nothing survived the check. Instead of refusing, quote the source:
+                # a verbatim passage cannot be a hallucination.
+                text = self._zitat(quellen)
+                zusatz.append("Keine belegte Aussage formuliert, Belegstelle zitiert")
 
         return Antwort(
             text=text,
@@ -399,10 +391,16 @@ class Pipeline:
             quellen=quellen,
             entscheidung=entscheidung,
             fehler=False,
-            warnungen=entscheidung.warnungen,
+            warnungen=[*entscheidung.warnungen, *zusatz],
         )
 
-    def _unbelegte_aussagen(self, text: str, quellen: list[Quelle]) -> list[str]:
+    def _zitat(self, quellen: list[Quelle]) -> str:
+        """Verbatim quotation of the best admitted passage — cannot be invented."""
+        quelle = quellen[0]
+        text = " ".join(quelle.text.split())
+        return f"Belegstelle: „{text}“ [{quelle.quelle}, S. {quelle.seite}]"
+
+    def _pruefe_saetze(self, text: str, quellen: list[Quelle]) -> tuple[list[str], list[str]]:
         """Claims that no admitted passage supports (spec: no hallucinations).
 
         A sentence that names a source is checked against that source. A sentence
@@ -412,7 +410,8 @@ class Pipeline:
         """
         nach_quelle = {(quelle.quelle, quelle.seite): quelle.text for quelle in quellen}
         alle = [quelle.text for quelle in quellen]
-        offen: list[str] = []
+        behalten: list[str] = []
+        verworfen: list[str] = []
         for satz, quelle, seite in split_claims(text):
             if quelle is None or seite is None:
                 kandidaten = alle
@@ -423,11 +422,13 @@ class Pipeline:
                     if quelle in datei and nummer == seite
                 ]
                 if not kandidaten:
-                    offen.append(satz)
+                    verworfen.append(satz)
                     continue
-            if not self._irgendeine_stuetzt(satz, kandidaten):
-                offen.append(satz)
-        return offen
+            if self._irgendeine_stuetzt(satz, kandidaten):
+                behalten.append(satz)
+            else:
+                verworfen.append(satz)
+        return behalten, verworfen
 
     def _repariere_antwort(self, text: str, quellen: list[Quelle]) -> str | None:
         """One rewrite attempt: keep only what the passages state. Then re-check."""

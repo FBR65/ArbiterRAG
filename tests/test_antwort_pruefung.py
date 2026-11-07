@@ -34,7 +34,9 @@ def test_claim_prompt_names_both_parts() -> None:
     assert "940" in user
 
 
-def _pipeline(tmp_path: Path, antwort: str, p_ja: float) -> Pipeline:
+def _pipeline(
+    tmp_path: Path, antwort: str, p_ja: float, p_pruefung: float | None = None
+) -> Pipeline:
     corpus = tmp_path / "korpus"
     corpus.mkdir(exist_ok=True)
     (corpus / "a.txt").write_text("Die Miete betraegt 940 Euro.", encoding="utf-8")
@@ -59,7 +61,14 @@ def _pipeline(tmp_path: Path, antwort: str, p_ja: float) -> Pipeline:
     )
     pipeline = Pipeline(cfg, cfg.rags["k"], embedder=FlatEmbedder())
     pipeline.index()
-    pipeline.gate_logprobs = lambda system, user: {"Ja": p_ja, "Nein": 1.0 - p_ja}
+
+    def logprobs(system: str, user: str) -> dict[str, float]:
+        # The same call serves the gate and the sentence check; the claim prompt names
+        # "Aussage", so the tests can give both steps their own probability.
+        treffer = p_ja if p_pruefung is None or "Aussage:" not in user else p_pruefung
+        return {"Ja": treffer, "Nein": 1.0 - treffer}
+
+    pipeline.gate_logprobs = logprobs
     pipeline.answerer = lambda system, user: antwort
     return pipeline
 
@@ -81,7 +90,13 @@ def test_answer_without_citation_is_allowed_when_a_passage_carries_it(tmp_path: 
     assert antwort.text is not None
 
 
-def test_answer_with_unsupported_sentence_is_refused_though_cited(tmp_path: Path) -> None:
-    pipeline = _pipeline(tmp_path, "Die Miete betraegt 1.400 Euro [a.txt, S. 1].", p_ja=0.1)
+def test_unsupported_sentence_is_dropped_not_the_whole_answer(tmp_path: Path) -> None:
+    # A wrong sentence must not silence the right one, and the answer must never be
+    # empty while a passage is admitted: the source is quoted instead.
+    pipeline = _pipeline(
+        tmp_path, "Die Miete betraegt 1.400 Euro [a.txt, S. 1].", p_ja=0.9, p_pruefung=0.1
+    )
     antwort = pipeline.ask("Wie hoch ist die Miete?")
-    assert antwort.text is None
+    assert antwort.text is not None
+    assert antwort.text.startswith("Belegstelle:")
+    assert any("Gestrichen" in warnung for warnung in antwort.warnungen)

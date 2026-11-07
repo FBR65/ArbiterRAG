@@ -1,8 +1,9 @@
 # ArbiterRAG
 
 Retrieval-Augmented Generation mit drei getrennten Stufen: HyDE erweitert die
-Kandidatenmenge, ein Reranker ordnet sie, und ein typisiertes Entscheidungsmodell
-(Laya) entscheidet, welche Passage die Antwort belegen darf.
+Kandidatenmenge, ein Reranker ordnet sie, und eine Prüfschicht entscheidet, welche
+Passage die Antwort belegen darf. Die Prüfschicht fragt das Chatmodell je Passage
+nach Ja oder Nein und liest die Wahrscheinlichkeit aus den Logprobs.
 
 Der Punkt: Ein Reranker kann nicht sagen „keine dieser Passagen belegt die
 Antwort". ArbiterRAG trennt Ordnen von Urteilen.
@@ -12,10 +13,10 @@ Antwort". ArbiterRAG trennt Ordnen von Urteilen.
 | Stufe | Inhalt | Zustand |
 |---|---|---|
 | 1 | Konfiguration, PDF-Index, Hybrid-Suche, RRF, CLI `index`/`search` | fertig, siehe `docs/EVIDENCE-stufe1.md` |
-| 2 | HyDE | nicht begonnen |
-| 3 | Reranker über `/v1/rerank` | nicht begonnen |
-| 4 | Laya: Gate, Auswahl, Widerspruch | nicht begonnen |
-| 5 | Antwort, Goldset, Schwellen aus der Messung | nicht begonnen |
+| 2 | HyDE | fertig, gemessen ohne Nutzen, abgeschaltet |
+| 3 | Reranker über `/v1/rerank` | fertig |
+| 4 | Prüfschicht: Ja/Nein je Passage über Logprobs | fertig, siehe `docs/EVIDENCE-verbesserungen.md` |
+| 5 | Antwort, Goldset, Schwellen aus der Messung | fertig |
 
 Der Vertrag steht in `SPEC.md`.
 
@@ -25,7 +26,7 @@ Der Vertrag steht in `SPEC.md`.
 src/arbiter/
   config.py     YAML, ${VAR}-Expansion, unbekannte Schlüssel sind Fehler
   loaders.py    PDF (pypdf) und Text, leere Seiten werden gezählt
-  chunk.py      Abschnitte ≤ 1200 Zeichen, an Absatzgrenzen, 100 Überlappung
+  chunk.py      Abschnitte ≤ 600 Zeichen, an Absatzgrenzen, 100 Überlappung
   embedding.py  dichte Vektoren über /v1/embeddings (OpenAI-kompatibel)
   store.py      LanceDB, eine Tabelle je RAG, dicht + Volltextindex
   fusion.py     Reciprocal Rank Fusion, k=60

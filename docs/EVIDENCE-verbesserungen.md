@@ -151,6 +151,43 @@ Nebenbefund: Zwei Läufe derselben Konfiguration ergaben 14 und 15 richtige Bele
 Die Kette ist also auf ±1 nicht reproduzierbar; Unterschiede dieser Größe sind
 nicht belegbar.
 
+## F — Laya entfernt, fünf Kandidaten, HyDE und Embedder verglichen
+
+Auf Anweisung: Laya ist aus dem Code entfernt (Gate je Passage, Auswahl über alle
+Kandidaten, Prüfer der Antwort, Paarvergleiche). Die Prüfschicht läuft nur noch über
+Qwen-Logprobs, auf den **fünf** besten Passagen statt auf allen.
+
+Gemessen mit `scripts/measure_chain.py`, ganze Kette bis zur Antwort, 31 Fragen,
+23 davon beantwortbar. Jede Zeile ein vollständiger Lauf.
+
+| Embedder | HyDE | Antworten | Beleg ok | falsch | verworfen |
+|---|---|---|---|---|---|
+| bge-m3 | aus | 21 | 15 | 6 | 10 |
+| bge-m3 | an | 21 | **16** | **5** | 10 |
+| nomic-embed-text-v2-moe | aus | 18 | 14 | 4 | 13 |
+| nomic-embed-text-v2-moe | an | 18 | 14 | 4 | 13 |
+
+**bge-m3 ist besser:** zwei bis drei Antworten mehr, ein bis zwei richtige Belege
+mehr. nomic verwirft mehr Fragen, obwohl es weniger falsche Antworten hat — es
+findet die Belegstelle seltener.
+
+**HyDE ändert bei bge-m3 eine Antwort** (15 → 16 richtig, 6 → 5 falsch), bei nomic
+nichts. Ein Unterschied von eins liegt in der Schwankung, die ich am 2026-11-07
+zwischen zwei gleichen Läufen gesehen habe. HyDE bleibt deshalb aus; der Gewinn ist
+nicht belegbar.
+
+Zwei Einschränkungen, die dazugehören:
+
+1. Der nomic-Index hat **eine Seite weniger**, weil die OCR-Seite beim Indexieren
+   nicht erkannt wurde (1720 statt 1721 Abschnitte). nomic ist damit leicht
+   benachteiligt, der Abstand ist aber größer als eine Seite.
+2. Der frühere Wert „22 Antworten, 15 richtig, 1 falsch" stammt aus einer Datenbank
+   mit gemischten Abschnittsgrößen (1200 und 600 Zeichen). Nach dem Neuaufbau mit
+   einheitlich 600 Zeichen sind es 21/15/6. Die alte Zahl war nicht belastbar.
+
+Für den nomic-Lauf musste `nomic-embed-text-v2-moe` in llama-swap um `--embeddings
+--pooling mean` ergänzt werden; ohne das Flag antwortet der Server 501.
+
 ## Endstand der Kette
 
 | Stufe | Recall@10 | nDCG@10 | Beleg ok (von 23) |

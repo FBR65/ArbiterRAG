@@ -1,7 +1,7 @@
 # ArbiterRAG — SPEC
 
 **Status:** freigegeben 2026-11-07 (rev. 2, Antworten D1–D9 eingearbeitet). Offen: D10–D12.
-**Zweck:** RAG-System mit HyDE, Reranker und Laya als Entscheidungsschicht.
+**Zweck:** RAG-System mit HyDE, Reranker und einer Prüfschicht über Logprobs.
 **Arbeitsverzeichnis:** `/home/speedy/Dokumente/dev/ArbiterRAG`
 
 Diese SPEC ist der Vertrag. Jede Änderung wird sichtbar ergänzt, nie still
@@ -17,10 +17,10 @@ Drei Stufen, jede mit einer eigenen Aufgabe:
 |---|---|---|
 | HyDE | erzeugt ein hypothetisches Antwortdokument und sucht damit zusätzlich | verändert die **Kandidatenmenge** (Recall) |
 | Reranker | bewertet jedes Paar `(Frage, Passage)` und ordnet | verändert die **Reihenfolge** |
-| Laya | beantwortet typisierte Fragen über State und Passagen | verändert **Annahme und Auswahl**, nicht die Reihenfolge |
+| Prüfschicht | beantwortet je Passage eine Ja/Nein-Frage über Logprobs | verändert **Annahme**, nicht die Reihenfolge |
 
 Der Kern: Der Reranker kann nicht sagen „keine dieser Passagen belegt die
-Antwort". Laya kann es. ArbiterRAG trennt Ordnen von Urteilen.
+Antwort". Die Prüfschicht kann es. ArbiterRAG trennt Ordnen von Urteilen.
 
 ## 2. Festlegungen
 
@@ -34,7 +34,7 @@ Antwort". Laya kann es. ArbiterRAG trennt Ordnen von Urteilen.
 | F6 | Backends hinter Protokollen, Unit-Tests laufen mit Fakes | kein Netz in Unit-Tests |
 | F7 | Ein neuer Korpus ist ein neuer YAML-Eintrag, kein neuer Code | Hausregel |
 | F8 | Oberfläche und Meldungen auf Deutsch | Hausregel |
-| F9 | **Jeder Modellaufruf ist OpenAI-kompatibel**: Chat über `/v1/chat/completions`, Embeddings über `/v1/embeddings`, Reranking über `/v1/rerank`. Laya ausschließlich über `/v1/systemone`. | Vorgabe Frank 2026-11-07 |
+| F9 | **Jeder Modellaufruf ist OpenAI-kompatibel**: Chat über `/v1/chat/completions` (mit `logprobs`), Embeddings über `/v1/embeddings`, Reranking über `/v1/rerank`. | Vorgabe Frank 2026-11-07 |
 
 ## 3. Entscheidungen
 
@@ -47,8 +47,8 @@ Antwort". Laya kann es. ArbiterRAG trennt Ordnen von Urteilen.
 | D3 | HyDE | **b** — Schalter, Default an, Original- und HyDE-Suche fusioniert | Verhalten D2 |
 | D4 | HyDE-Modell | **llama-swap** | Modell-ID ist Konfigurationswert; Vorgabe `gemma-4-12B` (kein chinesisches Modell) |
 | D5 | Reranker | **a** — HTTP `/v1/rerank` | Eintrag `bge-reranker-v2-m3` ist defekt, siehe D11 |
-| D6 | Laya-Umfang | **c** — Gate, Auswahl **und** Widerspruch/Mengenprüfung | Verhalten F7; Schwellen brauchen das Goldset |
-| D7 | Laya-Ausfall | **b** — keine Antwort | Verhalten F6, fail-closed |
+| D6 | Prüfschicht-Umfang | **c** — zuerst Gate, Auswahl und Widerspruch/Mengenprüfung geplant; Widerspruch/Mengen verworfen, weil gemessen ohne Wirkung (F8) | Messung 2026-11-07 |
+| D7 | Prüfschicht-Ausfall | **b** — keine Antwort | Verhalten F6, fail-closed |
 | D8 | Antwort erzeugen | **a** — ja, abschaltbar | Verhalten G |
 | D9 | Goldset | **b** — eigener Korpus, 30–40 originale deutsche Fragen | Stufe 5 |
 
@@ -163,50 +163,34 @@ Jedes Verhalten wird als Test geschrieben, rot gesehen, dann grün gemacht.
 - **E4** Der Score jeder Passage steht im Ergebnis. Er ist **keine**
   Wahrscheinlichkeit und wird nie als Schwelle benutzt.
 
-### F. Laya
+### F. Prüfschicht (Gate)
 
-- **F1** Je Passage der Reranker-Ausgabe wird **ein eigener** Request gestellt:
-  State = Frage + diese eine Passage, Frage `p1` („Beantwortet Auszug [1] die
-  Frage?"). Grund: gemessen am 2026-11-07 beantwortet das kleine multilinguale
-  Modell einen Sammel-State über die ganze Textmenge statt über die Marke — alle
-  P(true) lagen zwischen 0.98 und 0.99. Mit einer Passage je Request trennt es
-  klar (Treffer 0.941 gegenüber Rauschen 0.001–0.028).
-- **F8** `gate_modus` wählt die Bauform: `noul` (je Passage), `choice` (eine Frage
-  über alle Kandidaten plus `keine`, Zulassung nur mit Vorsprung `gate_marge` vor
-  `keine`) oder `aus` (kein Modellaufruf, die Reranker-Reihenfolge entscheidet;
-  dient als Vergleichsgröße).
-- **F9** `gate_modus: logprob` entscheidet über die Wahrscheinlichkeit eines
-  einzelnen Tokens: `qwen2.5-7b-instruct` antwortet auf „Beantwortet der Text die
-  Frage?" mit `ja` oder `nein`, `top_logprobs` liefert die Alternativen, die
-  Summe über alle `ja`-Token ist P(ja). Prompt-Variante über `gate_prompt`
-  (`teil` ist Default). Fehlen die Logprobs, zählt keine Wahrscheinlichkeit —
-  die Passage wird nicht zugelassen und eine Warnung ausgegeben.
-  *Gemessen 2026-11-07: Prompt „teil" trennt (nicht beantwortbar ≤ 0,091,
-  beantwortbar Median 1,000); in der Kette 22 Antworten, 14 richtige Belege,
-  1 falsche — gegen 8 falsche ohne Gate. Default.*
-- **F2** Eine Passage gilt als zulässig, wenn `p(true) >= laya_schwelle`
+- **F1** Die Prüfschicht prüft die **fünf besten** Passagen des Rerankers
+  (`gate_kandidaten`, Default 5). Je Passage **ein eigener** Request: die Frage
+  und diese eine Passage. Die Antwort zitiert bis zu drei zugelassene Passagen.
+- **F2** Die Entscheidung ist die Wahrscheinlichkeit eines einzelnen Tokens:
+  `qwen2.5-7b-instruct` antwortet auf „Beantwortet der Text die Frage?" mit `ja`
+  oder `nein`; `top_logprobs` liefert die Alternativen, die Summe über alle
+  `ja`-Token ist P(ja). Prompt-Variante über `gate_prompt`.
+- **F3** Eine Passage gilt als zulässig, wenn `P(ja) >= gate_schwelle`
   (Default 0.50).
-- **F3** Ist keine Passage zulässig, liefert das System keine Antwort, sondern
-  den Grund `keine belegte Passage` und die geprüften Passagen mit ihren
-  Wahrscheinlichkeiten. Der Antwortschritt wird nicht aufgerufen.
-- **F4** Je zulässiger Passage wird eine `score`-Frage mit fester Rubrik gestellt
-  (Deckung: keine / randlich / teilweise / vollständig). Die Auswahl folgt
-  diesem Score, nicht dem Reranker-Score.
-- **F5** Fehlt im Antwortkörper ein erwarteter Schlüssel, gilt die Passage als
-  nicht bewertet, `p = 0.0`, mit Hinweis im Ergebnis. Kein Absturz.
-- **F6** Bei HTTP 429/503 wird mit wachsendem Abstand wiederholt (3 Versuche,
-  1/2/4 s). Danach greift D7=b: **keine Antwort**, Grund
-  `Prüfschicht nicht erreichbar`, Exit-Code 1. Kein stilles Durchreichen.
-- **F7** Widerspruchs- und Mengenprüfung (D6=c): Für jedes Paar der zulässigen
-  Passagen wird eine `score`-Frage mit fünfstufiger Rubrik gestellt
-  (unabhängig / gleiches Thema / gleiche Aussage / überwiegend gleich /
-  Paraphrase). Ergebnis:
-  - Paare ab `widerspruch_niveau` gelten als Widerspruch und stehen im Ergebnis.
-  - Paare ab `redundanz_niveau` gelten als redundant; die Passage mit dem
-    niedrigeren Deckungsscore fällt aus der Auswahl.
-  - **Ohne Goldset gibt es keinen Schwellenwert.** Bis Stufe 5 ist F7 reine
-    Berichterstattung (Felder `widerspruch`, `redundanz`), keine Filterung. Das
-    ist Absicht: eine ungeprüfte Schwelle ist schlimmer als keine.
+- **F4** Ist keine Passage zulässig, liefert das System keine Antwort, sondern
+  den Grund `keine belegte Passage` und die Warnungen. Der Antwortschritt wird
+  nicht aufgerufen.
+- **F5** Fehlen die Logprobs, zählt keine Wahrscheinlichkeit: die Passage wird
+  nicht zugelassen, eine Warnung steht im Ergebnis. Kein stilles Durchreichen,
+  kein erfundener Wert.
+- **F6** Bei einem Fehler des Aufrufs gilt die Passage als nicht geprüft; ist
+  danach keine Passage zulässig, lautet der Grund `keine belegte Passage`.
+- **F7** *Gemessen 2026-11-07, Goldset 31 Fragen:* Prompt `teil` trennt
+  (nicht beantwortbare Fragen höchstens 0,091, beantwortbare im Median 1,000),
+  der Schwellenwert ist zwischen 0,3 und 0,9 beliebig. In der Kette bleiben bei
+  23 beantwortbaren Fragen 15 richtige Belege und 1 Falschantwort; ohne Gate
+  waren es 19 richtige und 8 falsche.
+- **F8** Die früheren Bauformen sind **entfernt**: Laya als Gate je Passage
+  (`noul`), als eine Auswahl über alle Kandidaten (`choice`) und als Prüfer der
+  fertigen Antwort. Alle drei entfernten richtige Antworten und keine falschen.
+  Messwerte in `docs/EVIDENCE-verbesserungen.md`, Abschnitte E, E2, E4.
 
 ### G. Antwort
 
@@ -221,12 +205,12 @@ Jedes Verhalten wird als Test geschrieben, rot gesehen, dann grün gemacht.
 - **H1** `arbiter index <rag>` meldet Zahl der Dateien, Abschnitte,
   übersprungene Dateien und textlose Seiten.
 - **H2** `arbiter search <rag> "<frage>"` gibt die Passagen mit Quelle, Seite,
-  RRF-Rang, Reranker-Score und Laya-Wahrscheinlichkeit als Tabelle aus.
+  RRF-Rang und Reranker-Score als Tabelle aus.
 - **H3** `arbiter ask <rag> "<frage>"` gibt Antwort plus Quellen aus; mit
   `--json` als maschinenlesbares Objekt.
 - **H4** `arbiter eval <rag>` fährt das Goldset und berichtet Recall@10,
   nDCG@10 und Antwortrichtigkeit, je Stufe getrennt: nur Fusion, mit HyDE, mit
-  Reranker, mit Laya.
+  Reranker, mit Prüfschicht.
 - **H5** Die CLI ist ein dünner Client der Bibliothek.
 
 ### I. Fehlerfälle
@@ -264,7 +248,7 @@ Angenommen mit dieser SPEC:
 | Statik | `ruff` (Lint + Format), `mypy` |
 | Laufzeit-Abhängigkeiten | `lancedb` (Store), `pyarrow` (von LanceDB verlangt), `numpy` (Vektorrechnung), `httpx` (HTTP-Backends), `pyyaml` (Konfiguration), `pypdf` (PDF-Textebene, BSD-3), `pypdfium2` (Seiten rendern, BSD-3/Apache-2.0), `pillow` (PNG-Kodierung für die OCR, HPND) |
 | Test-Abhängigkeiten | `pytest`, `pytest-cov`, `hypothesis`, `ruff`, `mypy` |
-| Modell-Abhängigkeiten | `bge-m3` (MIT), `bge-reranker-v2-m3` (Apache-2.0), `laya` multilingual (Apache-2.0) — Lizenzen am 2026-11-07 über die Registry geprüft. HyDE- und Antwortmodell aus llama-swap (D4/D8) |
+| Modell-Abhängigkeiten | `bge-m3` (MIT), `bge-reranker-v2-m3` (Apache-2.0) — Lizenzen am 2026-11-07 über die Registry geprüft. HyDE- und Antwortmodell aus llama-swap (D4/D8) |
 | Nicht installiert | kein torch, kein FlagEmbedding im Client |
 
 ## 7. Stufen mit Stopp-Punkten
@@ -277,7 +261,7 @@ nächste braucht eine neue Freigabe. Aufwände sind Schätzungen.
 | 1 | Gerüst, Konfiguration, PDF-Index, Hybrid, RRF, CLI `index`/`search` | A, B, C, H1–H2, I | ~1 Tag |
 | 2 | HyDE | D | ~0.5 Tag |
 | 3 | Reranker über `/v1/rerank` (setzt D11 voraus) | E | ~0.5 Tag |
-| 4 | Laya: Gate, Auswahl, Widerspruch/Mengen (Bericht) | F, H3 | ~1 Tag |
+| 4 | Prüfschicht: Gate über Logprobs; Laya-Formen gemessen und entfernt | F | ~1 Tag |
 | 5 | Antwort, Goldset, Schwellen aus der Messung | G, H4, F7 als Filter | ~1 Tag |
 
 ## 8. Messung (Stufe 5)
@@ -289,7 +273,7 @@ Fragensatzes.
 |---|---|
 | Recall@10 | ob die richtige Passage im Kandidatenpool liegt (Wirkung von HyDE) |
 | nDCG@10 | ob die Reihenfolge stimmt (Wirkung des Rerankers) |
-| Antwortrichtigkeit | ob die Antwort stimmt (Wirkung von Laya) |
+| Antwortrichtigkeit | ob die Antwort stimmt (Wirkung der Prüfschicht) |
 | Falschantwortquote bei nicht beantwortbaren Fragen | der eigentliche Gewinn der Entscheidungsschicht |
 
 Berichtet wird je Stufe getrennt. Ein Ergebnis, das nur insgesamt besser ist,

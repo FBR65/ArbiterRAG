@@ -14,7 +14,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from arbiter.answer import Quelle, build_answer_prompt
-from arbiter.check import build_claim_prompt, build_repair_prompt, split_claims
+from arbiter.answer import KEINE_ANTWORT
+from arbiter.check import build_claim_prompt, build_repair_prompt, ist_meta, split_claims
 from arbiter.chunk import chunk_text
 from arbiter.config import Config, Rag
 from arbiter.decision import (
@@ -418,6 +419,16 @@ class Pipeline:
                 warnungen=entscheidung.warnungen,
             )
 
+        if KEINE_ANTWORT.casefold() in text.casefold():
+            return Antwort(
+                text=None,
+                grund="Die Auszüge beantworten die Frage nicht",
+                quellen=quellen,
+                entscheidung=entscheidung,
+                fehler=False,
+                warnungen=entscheidung.warnungen,
+            )
+
         zusatz: list[str] = []
         if self.rag.antwort_pruefung:
             behalten, verworfen = self._pruefe_saetze(text, quellen)
@@ -470,6 +481,9 @@ class Pipeline:
         behalten: list[str] = []
         verworfen: list[str] = []
         for satz, quelle, seite in split_claims(text):
+            if ist_meta(satz):
+                verworfen.append(satz)
+                continue
             if quelle is None or seite is None:
                 kandidaten = alle
             else:

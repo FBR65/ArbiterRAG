@@ -205,6 +205,12 @@ Jedes Verhalten wird als Test geschrieben, rot gesehen, dann grün gemacht.
 - **G1** Die Antwort wird nur aus den zulässigen Passagen über
   `/v1/chat/completions` gebildet. Jede Aussage trägt die `quelle` der Passage.
 - **G2** Die Antwort nennt die verwendeten Quellen am Ende.
+- **G5** Die Antwort enthält **keine Aussagen über die Auszüge selbst**. Der Prompt
+  nennt keine Ablehnungsformel mehr im Klartext (sie erschien sonst in der Antwort:
+  „Das steht nicht in den Auszügen, aber es wird erwähnt …"), sondern ein Token
+  `KEINE_ANTWORT`. Enthält die Antwort dieses Token, lautet das Ergebnis „Die Auszüge
+  beantworten die Frage nicht". Sätze, die über die Auszüge sprechen, werden vor der
+  Prüfung verworfen und nie ausgeliefert.
 - **G3** Liefert das Antwortmodell leeren Text, gilt der Lauf als fehlgeschlagen
   (Exit-Code 1, Meldung), nicht als leere Antwort.
 

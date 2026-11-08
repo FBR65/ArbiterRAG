@@ -12,6 +12,24 @@ import re
 
 # A claim ends at a sentence end. The lookahead keeps "z. B." and "S. 3" in one piece.
 _SATZ = re.compile(r"(?<=[.!?])\s+(?=[A-ZÄÖÜ])")
+
+# Sentences about the sources instead of about the matter. They are no claim about the
+# corpus and must not be checked (and never shown): an answer that talks about its own
+# excerpts is a defect of the prompt, not content.
+_META = (
+    re.compile(r"\b(die|der|den|im|in\s+den)\s+ausz(ü|u)ge?n?\b", re.IGNORECASE),
+    re.compile(r"\b(steht|stehen)\s+nicht\s+in\s+den\s+ausz", re.IGNORECASE),
+    re.compile(r"\bes\s+wird\s+erw(ä|ae)hnt\b", re.IGNORECASE),
+    re.compile(r"\b(die|diese)\s+quellen?\b.{0,40}\b(sagen|enthalten|belegen)\b", re.IGNORECASE),
+    re.compile(r"\bkeine_antwort\b", re.IGNORECASE),
+)
+
+
+def ist_meta(satz: str) -> bool:
+    """True for sentences that talk about the excerpts instead of about the question."""
+    return any(muster.search(satz) for muster in _META)
+
+
 _QUELLE = re.compile(r"\[([^\]]+),\s*S\.\s*(\d+)\]")
 
 

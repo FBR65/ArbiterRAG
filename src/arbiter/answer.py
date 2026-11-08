@@ -8,11 +8,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+# A token, not a sentence: an instruction that spells out the refusal sentence ends up
+# inside the answer ("Das steht nicht in den Auszügen, aber es wird erwähnt ...").
+KEINE_ANTWORT = "KEINE_ANTWORT"
+
 SYSTEM = (
     "Du beantwortest die Frage ausschließlich aus den gegebenen Auszügen. "
     "Jede Aussage trägt die Quelle in eckigen Klammern, zum Beispiel [a.pdf, S. 4]. "
-    "Wenn die Auszüge die Frage nicht beantworten, antworte: "
-    "Das steht nicht in den Auszügen. Erfinde keine Zahlen und keine Quellen."
+    f"Beantworten die Auszüge die Frage nicht, gib nur das Wort {KEINE_ANTWORT} aus. "
+    "Schreibe keinen Satz über die Auszüge selbst, keine Vorrede, keine Anmerkung zur "
+    "eigenen Antwort und keine Erklärung, was fehlt. Erfinde keine Zahlen und keine Quellen."
 )
 
 

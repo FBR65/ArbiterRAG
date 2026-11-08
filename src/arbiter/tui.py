@@ -212,14 +212,15 @@ class ArbiterTui(App[None]):
 
 
 def main() -> None:
-    """Startet die Oberfläche mit der Konfiguration aus ``ARBITER_CONFIG``."""
-    import os
+    """Startet die Oberfläche; fehlende Variablen kommen aus ``arbiter.env``."""
     from pathlib import Path
 
     from arbiter.config import load_config
+    from arbiter.runtime import lade_umgebung
 
-    cfg = load_config(Path(os.environ.get("ARBITER_CONFIG", "arbiter.yaml")), os.environ)
-    name = os.environ.get("ARBITER_RAG") or next(iter(cfg.rags))
+    umgebung = lade_umgebung()
+    cfg = load_config(Path(umgebung.get("ARBITER_CONFIG", "arbiter.yaml")), umgebung)
+    name = umgebung.get("ARBITER_RAG") or next(iter(cfg.rags))
     ArbiterTui(Pipeline(cfg, cfg.rags[name])).run()
 
 

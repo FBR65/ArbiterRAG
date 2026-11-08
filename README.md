@@ -28,6 +28,10 @@ uv run arbiter ask downloads "Frage"
 uv run arbiter-api          # HTTP-Dienst auf 127.0.0.1:8091
 ```
 
+Fehlende Umgebungsvariablen kommen aus `arbiter.env` (Pfad über `ARBITER_ENV`);
+was in der Shell exportiert ist, gewinnt. `uv run arbiter-tui` startet also auch in
+einer frischen Shell.
+
 Die Oberfläche hat ein Eingabefeld, einen Verlauf und eine Statuszeile (RAG, Abschnitte,
 Modus, HyDE, Reranker, Gate). Tasten: `Enter` fragen, `Ctrl+S` Suchen statt Antworten
 (zeigt die Passagen mit Reranker-Score), `Ctrl+I` indexieren, `Ctrl+L` Verlauf leeren,

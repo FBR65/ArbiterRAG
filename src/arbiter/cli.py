@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -159,8 +158,11 @@ def _eval(pipeline: Pipeline, goldset_path: Path, limit: int) -> int:
 
 
 def _load_default_config() -> Config:
-    path = os.environ.get("ARBITER_CONFIG", "arbiter.yaml")
-    return load_config(Path(path), os.environ)
+    from arbiter.runtime import lade_umgebung
+
+    umgebung = lade_umgebung()
+    path = umgebung.get("ARBITER_CONFIG", "arbiter.yaml")
+    return load_config(Path(path), umgebung)
 
 
 def _parser() -> argparse.ArgumentParser:

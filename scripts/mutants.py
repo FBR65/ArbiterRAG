@@ -87,12 +87,6 @@ MUTANTS = [
         "        if False:\n            table.add_columns(missing)",
     ),
     Mutant(
-        "hyde-does-not-truncate",
-        "src/arbiter/hyde.py",
-        "    if len(text) <= max_chars:\n        return text.strip()",
-        "    if True:\n        return text.strip()",
-    ),
-    Mutant(
         "rerank-scores-land-on-the-first-slot",
         "src/arbiter/rerank.py",
         '            scores[index] = float(entry["relevance_score"])',

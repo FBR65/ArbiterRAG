@@ -31,7 +31,6 @@ def _cfg(tmp_path: Path, **rag_kwargs: object) -> Config:
                 description="Test",
                 corpus_path=corpus,
                 extensions=(".txt",),
-                hyde=False,
                 rerank=False,
                 **rag_kwargs,  # type: ignore[arg-type]
             )

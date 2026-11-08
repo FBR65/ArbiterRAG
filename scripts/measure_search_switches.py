@@ -14,7 +14,7 @@ cfg = load_config(Path("arbiter.yaml"), os.environ)
 rag = cfg.rags["downloads"]
 goldset = load_goldset(Path("goldset/downloads.yaml"))
 pipeline = Pipeline(cfg, rag)
-nur_suche = replace(rag, hyde=False, rerank=False, fuse_top_k=10, rerank_top_n=10)
+nur_suche = replace(rag, rerank=False, fuse_top_k=10, rerank_top_n=10)
 twin = Pipeline(cfg, nur_suche, embedder=pipeline.embedder)
 twin.store = pipeline.store
 

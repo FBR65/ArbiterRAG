@@ -15,9 +15,9 @@ from pathlib import Path
 
 import pyarrow.parquet as pq
 
+from arbiter.chat import ChatClient
 from arbiter.config import load_config
 from arbiter.decision import build_ja_nein_prompt, ja_wahrscheinlichkeit
-from arbiter.hyde import ChatClient
 
 QUELLE = Path.home() / ".cache/arbiterrag/ger-rag-eval/task4_test.parquet"
 ZIEL = Path.home() / ".cache/arbiterrag/ger-rag-eval/gate-messung.csv"

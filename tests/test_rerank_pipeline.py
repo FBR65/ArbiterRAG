@@ -32,7 +32,6 @@ def _pipeline(tmp_path: Path, reranker) -> Pipeline:
                 description="Test",
                 corpus_path=corpus,
                 extensions=(".txt",),
-                hyde=False,
                 fuse_top_k=5,
                 rerank_top_n=2,
             )

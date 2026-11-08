@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pyarrow.parquet as pq
 
+from arbiter.chat import ChatClient
 from arbiter.config import load_config
 from arbiter.decision import ja_wahrscheinlichkeit
-from arbiter.hyde import ChatClient
 
 QUELLE = Path.home() / ".cache/arbiterrag/ger-rag-eval/task4_test.parquet"
 

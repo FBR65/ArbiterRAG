@@ -1,9 +1,7 @@
 """Indexing and search orchestration (spec B, C, H).
 
-Stage 1: PDF/TXT indexing, hybrid search, RRF fusion. HyDE, reranking and the
-Laya decision layer are added in later stages and stay behind explicit calls
-that are not written yet — asking for them now raises instead of silently
-degrading.
+Indexing, search, the gate and the answer step live here; each one is a method on
+:class:`Pipeline` and every model call goes through llama-swap.
 """
 
 from __future__ import annotations
@@ -14,6 +12,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from arbiter.answer import KEINE_ANTWORT, Quelle, build_answer_prompt
+from arbiter.chat import ChatClient
 from arbiter.check import build_claim_prompt, build_repair_prompt, ist_meta, split_claims
 from arbiter.chunk import chunk_text
 from arbiter.config import Config, Rag
@@ -25,7 +24,6 @@ from arbiter.decision import (
 )
 from arbiter.embedding import HttpEmbedder
 from arbiter.fusion import rrf_many
-from arbiter.hyde import ChatClient, build_prompt, truncate
 from arbiter.loaders import OcrHook, OcrPage, load_corpus
 from arbiter.ocr import VisionOcr, dots_to_text, render_png, word_overlap
 from arbiter.rerank import RerankClient
@@ -95,7 +93,6 @@ class Antwort:
 class SearchResult:
     question: str
     passages: list[Passage]
-    hyde_text: str | None = None
     rerank: str = "aus"  # "aus" | "aktiv" | "ausgefallen"
     warnungen: list[str] = field(default_factory=list)
 
@@ -117,7 +114,6 @@ class Pipeline:
         self.store = Store(config.db_path)
         # Callable(question, description) -> hypothetical answer document.
         # Left empty here so tests can inject one and the real client stays lazy.
-        self.hyde: Callable[[str, str], str] | None = None
         # Callable(query, documents) -> one score per document.
         self.reranker: Callable[[str, list[str]], list[float]] | None = None
         # Callable(state, questions) -> answers map; and Callable(system, user) -> text.
@@ -209,38 +205,18 @@ class Pipeline:
         self.store.ensure_fts(self.rag.name, stem=self.rag.fts_stem)
         return report
 
-    def search(self, question: str, hyde: bool | None = None) -> SearchResult:
+    def search(self, question: str) -> SearchResult:
         if len(question) > MAX_FRAGE_ZEICHEN:
             raise QuestionTooLong(
                 f"Frage zu lang: {len(question)} Zeichen, erlaubt sind {MAX_FRAGE_ZEICHEN}"
             )
 
         warnungen: list[str] = []
-        use_hyde = self.rag.hyde if hyde is None else hyde
 
         dense_ids, fts_ids, hits = self._rank_lists(question)
         rankings: list[list[str]] = [dense_ids, fts_ids]
-        hyde_text: str | None = None
 
-        if use_hyde:
-            try:
-                hyde_text = self._hyde_document(question)
-            except Exception as exc:
-                warnungen.append(f"HyDE fehlgeschlagen, Suche ohne HyDE: {exc}")
-                hyde_text = None
-            if hyde_text:
-                hyde_dense_ids, hyde_fts_ids, hyde_hits = self._rank_lists(hyde_text)
-                rankings.extend([hyde_dense_ids, hyde_fts_ids])
-                hits.update(hyde_hits)
-
-        fused = rrf_many(
-            rankings,
-            k=60,
-            top_k=self.rag.fuse_top_k,
-            weights=[1.0] * (len(rankings) - 2) + [self.rag.hyde_gewicht] * 2
-            if len(rankings) > 2
-            else None,
-        )
+        fused = rrf_many(rankings, k=60, top_k=self.rag.fuse_top_k)
 
         passages = [
             Passage(
@@ -290,7 +266,6 @@ class Pipeline:
         return SearchResult(
             question=question,
             passages=passages,
-            hyde_text=hyde_text,
             rerank=rerank_status,
             warnungen=warnungen,
         )
@@ -353,18 +328,13 @@ class Pipeline:
         client = ChatClient(self.config.backends.base_url, self.config.backends.chat_model)
         return client.probabilities(system, user, grammar=GATE_GRAMMATIK)
 
-    def ask(
-        self,
-        question: str,
-        hyde: bool | None = None,
-        vorgabe: SearchResult | None = None,
-    ) -> Antwort:
+    def ask(self, question: str, vorgabe: SearchResult | None = None) -> Antwort:
         """Search, decide, answer — in that order (spec F3, G).
 
-        ``vorgabe`` reuses an already computed search result, so a caller that
-        measured the search does not pay for a second HyDE call.
+        ``vorgabe`` reuses an already computed search result, so a caller that has
+        measured the search does not pay for it twice.
         """
-        result = vorgabe if vorgabe is not None else self.search(question, hyde=hyde)
+        result = vorgabe if vorgabe is not None else self.search(question)
         try:
             entscheidung = self.bewerte(result)
         except DecisionError as exc:
@@ -563,15 +533,6 @@ class Pipeline:
             client = RerankClient(self.config.backends.base_url, self.config.backends.rerank_model)
             self.reranker = client.scores
         return self.reranker(question, documents)
-
-    def _hyde_document(self, question: str) -> str:
-        """One hypothetical answer document, cut to ``hyde_max_chars``."""
-        if self.hyde is None:
-            client = ChatClient(self.config.backends.base_url, self.config.backends.chat_model)
-            system, user = build_prompt(question, self.rag.description)
-            self.hyde = lambda _q, _d: client.complete(system, user)
-        text = self.hyde(question, self.rag.description)
-        return truncate(str(text), self.rag.hyde_max_chars).strip()
 
     def _ingest_einstellungen(self) -> str:
         """Everything that changes the text of a file, as one string.

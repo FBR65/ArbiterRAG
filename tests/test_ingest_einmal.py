@@ -23,7 +23,6 @@ def _pipeline(tmp_path: Path, **rag_aenderungen: object) -> Pipeline:
         "description": "Test",
         "corpus_path": corpus,
         "extensions": (".txt",),
-        "hyde": False,
         "rerank": False,
     }
     werte.update(rag_aenderungen)

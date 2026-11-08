@@ -25,7 +25,6 @@ def passage_json(passage: Passage) -> dict[str, Any]:
 def suchergebnis_json(result: SearchResult) -> dict[str, Any]:
     return {
         "frage": result.question,
-        "hyde_text": result.hyde_text,
         "rerank": result.rerank,
         "passagen": [passage_json(passage) for passage in result.passages],
         "warnungen": result.warnungen,

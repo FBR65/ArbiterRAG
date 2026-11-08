@@ -8,10 +8,10 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from arbiter.chat import ChatClient
 from arbiter.config import load_config
 from arbiter.decision import build_ja_nein_prompt, ja_wahrscheinlichkeit
 from arbiter.eval import load_goldset
-from arbiter.hyde import ChatClient
 from arbiter.pipeline import Pipeline
 
 cfg = load_config(Path("arbiter.yaml"), os.environ)

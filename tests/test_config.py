@@ -45,8 +45,8 @@ def test_loads_minimal_config_with_defaults(tmp_path: Path) -> None:
     assert rag.fuse_top_k == 20
     assert rag.rerank_top_n == 5
     assert rag.gate_schwelle == 0.5
-    assert rag.hyde is True
-    assert rag.hyde_max_chars == 800
+    assert rag.chunk_chars == 600
+    assert rag.gate_kandidaten == 5
 
 
 def test_missing_required_field_names_field_and_file(tmp_path: Path) -> None:
@@ -73,7 +73,7 @@ def test_empty_variable_is_an_error_not_a_default(tmp_path: Path) -> None:
 
 
 def test_unknown_key_is_rejected(tmp_path: Path) -> None:
-    broken = MINIMAL.replace("    hyde: true", "") + "    top_k_fancy: 3\n"
+    broken = MINIMAL.replace("    chunk_chars: 600", "") + "    top_k_fancy: 3\n"
     with pytest.raises(ConfigError) as err:
         load_config(_write(tmp_path, broken), _env())
     assert "top_k_fancy" in str(err.value)

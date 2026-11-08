@@ -51,7 +51,6 @@ def _pipeline(tmp_path: Path, antwort: str) -> Pipeline:
                 description="T",
                 corpus_path=corpus,
                 extensions=(".txt",),
-                hyde=False,
                 rerank=False,
                 gate_kandidaten=1,
                 antwort_pruefung=True,

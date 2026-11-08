@@ -114,7 +114,7 @@ class ArbiterTui(App[None]):
         modus = "Suche" if self.suchmodus else "Antwort"
         self.query_one("#stand", Static).update(
             f"RAG {rag.name} · {zeilen} Abschnitte · Modus {modus} · "
-            f"HyDE {'an' if rag.hyde else 'aus'} · Reranker {'an' if rag.rerank else 'aus'} · "
+            f"Reranker {'an' if rag.rerank else 'aus'} · "
             f"Gate {rag.gate_prompt} über {rag.gate_kandidaten} Passagen"
         )
 

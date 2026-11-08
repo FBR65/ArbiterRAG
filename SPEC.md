@@ -1,7 +1,7 @@
 # ArbiterRAG — SPEC
 
 **Status:** freigegeben 2026-11-07 (rev. 2, Antworten D1–D9 eingearbeitet). Offen: D10–D12.
-**Zweck:** RAG-System mit HyDE, Reranker und einer Prüfschicht über Logprobs.
+**Zweck:** RAG-System mit Reranker und einer Prüfschicht über Logprobs.
 **Arbeitsverzeichnis:** `/home/speedy/Dokumente/dev/ArbiterRAG`
 
 Diese SPEC ist der Vertrag. Jede Änderung wird sichtbar ergänzt, nie still
@@ -15,7 +15,6 @@ Drei Stufen, jede mit einer eigenen Aufgabe:
 
 | Stufe | Aufgabe | Wirkung |
 |---|---|---|
-| HyDE | erzeugt ein hypothetisches Antwortdokument und sucht damit zusätzlich | verändert die **Kandidatenmenge** (Recall) |
 | Reranker | bewertet jedes Paar `(Frage, Passage)` und ordnet | verändert die **Reihenfolge** |
 | Prüfschicht | beantwortet je Passage eine Ja/Nein-Frage über Logprobs | verändert **Annahme**, nicht die Reihenfolge |
 
@@ -44,8 +43,8 @@ Antwort". Die Prüfschicht kann es. ArbiterRAG trennt Ordnen von Urteilen.
 |---|---|---|---|
 | D1 | `GenericRAG` lesen? | **b** — nur lesen, Code neu | Konventionen übernehmen, kein Code kopieren |
 | D2 | Korpus | **PDF** | PDF-Extraktor nötig (Abhängigkeit `pypdf`), Verhalten B2 |
-| D3 | HyDE | **b** — Schalter, Default an, Original- und HyDE-Suche fusioniert | Verhalten D2 |
-| D4 | HyDE-Modell | **llama-swap** | Modell-ID ist Konfigurationswert; Vorgabe `gemma-4-12B` (kein chinesisches Modell) |
+| D3 | HyDE | **entfernt 2026-11-07** — gemessen ohne Wirkung: bei bge-m3 eine Antwort Unterschied, bei nomic keine. Anordnung Frank: raus, was nichts bringt | Abschnitt D der SPEC gestrichen |
+| D4 | HyDE-Modell | **entfällt** mit D3 | — |
 | D5 | Reranker | **a** — HTTP `/v1/rerank` | Eintrag `bge-reranker-v2-m3` ist defekt, siehe D11 |
 | D6 | Prüfschicht-Umfang | **c** — zuerst Gate, Auswahl und Widerspruch/Mengenprüfung geplant; Widerspruch/Mengen verworfen, weil gemessen ohne Wirkung (F8) | Messung 2026-11-07 |
 | D7 | Prüfschicht-Ausfall | **b** — keine Antwort | Verhalten F6, fail-closed |
@@ -142,23 +141,17 @@ Jedes Verhalten wird als Test geschrieben, rot gesehen, dann grün gemacht.
   bedeutet Sortierung nach `id` aufsteigend — die Ausgabe ist bei gleicher
   Eingabe gleich.
 - **C4** Die Fusion schneidet auf `fuse_top_k` (Default 20) ab.
-- **C5** HyDE-Listen gehen mit `hyde_gewicht` (Default 0.5) in die Fusion ein, die
-  Listen der Originalfrage mit 1.0.
 - **C6** `hybrid: false` lässt nur die dichte Suche laufen. Gemessen 2026-11-07:
   dichte Suche allein Recall 0,71, mit Volltextteil 0,65 — die wiederholte
   Kopfzeile der Foliensätze belegt sonst viele Plätze.
 
-### D. HyDE
+### D. HyDE — entfernt
 
-- **D1** Das HyDE-Dokument wird aus Frage und RAG-Beschreibung über
-  `/v1/chat/completions` erzeugt und auf `hyde_max_chars` (Default 800) gekürzt.
-- **D2** Ist HyDE eingeschaltet (Default an, D3=b), laufen zwei Suchen und
-  werden fusioniert: eine mit der Originalfrage, eine mit dem HyDE-Dokument.
-- **D3** Schlägt der HyDE-Aufruf fehl, läuft die Suche mit der Originalfrage
-  weiter. Genau eine Warnung mit Fehlergrund. Kein Abbruch, kein stiller
-  Ausfall.
-- **D4** Das erzeugte Dokument wird im Ergebnis mitgeführt (`hyde_text`), damit
-  sichtbar ist, was gesucht wurde.
+HyDE (hypothetisches Antwortdokument als zweite Suche) ist am 2026-11-07 entfernt
+worden. Messung: mit HyDE 15 richtige Belege, ohne 16 (bge-m3), bei nomic-embed-text
+in beiden Fällen 14 — der Unterschied liegt in der Schwankung. Der Schalter, das
+Dokument und die Gewichtung in der Fusion sind gelöscht; die Suche läuft mit der
+Frage. Messwerte: `docs/EVIDENCE-verbesserungen.md`, Abschnitte C und F.
 
 ### E. Reranking
 
@@ -223,8 +216,8 @@ Jedes Verhalten wird als Test geschrieben, rot gesehen, dann grün gemacht.
 - **H3** `arbiter ask <rag> "<frage>"` gibt Antwort plus Quellen aus; mit
   `--json` als maschinenlesbares Objekt.
 - **H4** `arbiter eval <rag>` fährt das Goldset und berichtet Recall@10,
-  nDCG@10 und Antwortrichtigkeit, je Stufe getrennt: nur Fusion, mit HyDE, mit
-  Reranker, mit Prüfschicht.
+  nDCG@10 und Antwortrichtigkeit, je Stufe getrennt: nur Fusion, mit Reranker, mit
+  Prüfschicht.
 - **H5** Die CLI ist ein dünner Client der Bibliothek.
 
 ### I. Fehlerfälle

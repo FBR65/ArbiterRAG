@@ -11,7 +11,6 @@ from arbiter.tui import ArbiterTui, quellen_text, treffer_text
 
 class FakeRag:
     name = "k"
-    hyde = False
     rerank = True
     gate_prompt = "teil"
     gate_kandidaten = 5

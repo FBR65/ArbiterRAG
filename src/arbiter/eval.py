@@ -1,6 +1,6 @@
 """Measurement on a gold set (spec H4, stage 5).
 
-Four stages are measured separately — fusion, with HyDE, with reranking, with
+Three stages are measured separately — fusion, with reranking, with
 the decision layer — because an improvement that only shows up in the total
 says nothing about which stage produced it.
 """
@@ -127,14 +127,12 @@ def run(pipeline: Pipeline, goldset: list[GoldFrage]) -> list[Stufe]:
     """
     laenge = max(10, pipeline.rag.fuse_top_k, pipeline.rag.rerank_top_n)
     gleich = replace(pipeline.rag, fuse_top_k=laenge, rerank_top_n=laenge)
-    nur_fusion = replace(gleich, hyde=False, rerank=False)
-    mit_hyde = replace(gleich, hyde=True, rerank=False)
-    mit_rerank = replace(gleich, hyde=True, rerank=True)
+    nur_fusion = replace(gleich, rerank=False)
+    mit_rerank = replace(gleich, rerank=True)
 
     def stage_pipeline(rag: object) -> Pipeline:
         twin = Pipeline(pipeline.config, rag, embedder=pipeline.embedder)  # type: ignore[arg-type]
         twin.store = pipeline.store
-        twin.hyde = pipeline.hyde
         twin.reranker = pipeline.reranker
         twin.gate_logprobs = pipeline.gate_logprobs
         twin.answerer = pipeline.answerer
@@ -142,7 +140,6 @@ def run(pipeline: Pipeline, goldset: list[GoldFrage]) -> list[Stufe]:
 
     return [
         _stage(stage_pipeline(nur_fusion), goldset, "nur Fusion", mit_antwort=False),
-        _stage(stage_pipeline(mit_hyde), goldset, "mit HyDE", mit_antwort=False),
         _stage(stage_pipeline(mit_rerank), goldset, "mit Reranker", mit_antwort=False),
         _stage(stage_pipeline(mit_rerank), goldset, "mit Gate", mit_antwort=True),
     ]

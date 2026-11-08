@@ -41,8 +41,6 @@ class Rag:
     fuse_top_k: int = 20
     rerank_top_n: int = 5
     gate_schwelle: float = 0.5
-    hyde: bool = True
-    hyde_max_chars: int = 800
     ocr: bool = False
     ocr_dpi: int = 200
     ocr_dpi_paddle: int = 300
@@ -54,7 +52,6 @@ class Rag:
     sprache: str | None = None
     hybrid: bool = True
     fts_stem: bool = False
-    hyde_gewicht: float = 0.5
     gate_prompt: str = "teil"
     gate_kandidaten: int = 5
     antwort_passagen: int = 3
@@ -87,8 +84,6 @@ _RAG_KEYS = {
     "top_k_fts",
     "fuse_top_k",
     "rerank_top_n",
-    "hyde",
-    "hyde_max_chars",
     "ocr",
     "ocr_dpi",
     "ocr_dpi_paddle",
@@ -100,7 +95,6 @@ _RAG_KEYS = {
     "sprache",
     "hybrid",
     "fts_stem",
-    "hyde_gewicht",
     "gate_prompt",
     "gate_kandidaten",
     "antwort_passagen",
@@ -204,8 +198,6 @@ def _rag(name: str, entry: Any, filename: str) -> Rag:
         fuse_top_k=int(entry.get("fuse_top_k", 20)),
         rerank_top_n=int(entry.get("rerank_top_n", 5)),
         gate_schwelle=float(entry.get("gate_schwelle", 0.5)),
-        hyde=bool(entry.get("hyde", True)),
-        hyde_max_chars=int(entry.get("hyde_max_chars", 800)),
         ocr=bool(entry.get("ocr", False)),
         ocr_dpi=int(entry.get("ocr_dpi", 200)),
         ocr_dpi_paddle=int(entry.get("ocr_dpi_paddle", 300)),
@@ -217,7 +209,6 @@ def _rag(name: str, entry: Any, filename: str) -> Rag:
         sprache=None if entry.get("sprache") is None else str(entry["sprache"]),
         hybrid=bool(entry.get("hybrid", True)),
         fts_stem=bool(entry.get("fts_stem", False)),
-        hyde_gewicht=float(entry.get("hyde_gewicht", 0.5)),
         gate_prompt=str(entry.get("gate_prompt", "teil")),
         gate_kandidaten=int(entry.get("gate_kandidaten", 5)),
         antwort_passagen=int(entry.get("antwort_passagen", 3)),

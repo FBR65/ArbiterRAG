@@ -9,9 +9,9 @@ from typing import Any
 import httpx
 import pytest
 
+from arbiter.chat import ChatClient
 from arbiter.config import Backends, Config, Rag
 from arbiter.decision import ja_wahrscheinlichkeit
-from arbiter.hyde import ChatClient
 from arbiter.pipeline import Pipeline
 
 
@@ -103,7 +103,6 @@ def _pipeline(tmp_path: Path, wahrscheinlichkeiten: list[float]) -> Pipeline:
                 description="Test",
                 corpus_path=corpus,
                 extensions=(".txt",),
-                hyde=False,
                 rerank=False,
                 fuse_top_k=5,
                 gate_schwelle=0.5,

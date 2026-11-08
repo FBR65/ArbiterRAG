@@ -26,7 +26,6 @@ def _pipeline(tmp_path: Path, satz: str = "Die Miete betraegt 940 Euro.") -> Pip
                 description="T",
                 corpus_path=corpus,
                 extensions=(".txt",),
-                hyde=False,
                 rerank=False,
                 gate_kandidaten=1,
                 antwort_pruefung=True,

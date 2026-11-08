@@ -1,13 +1,12 @@
 """Measure the full chain (search + gate + answer) for one configuration.
 
-Writes one row per HyDE setting, so the same run yields "with" and "without".
+One full run over the goldset: search, gate, answer.
 Run: ARBITER_DB=... ARBITER_EMBED_MODEL=... uv run python scripts/measure_chain.py
 """
 
 from __future__ import annotations
 
 import os
-from dataclasses import replace
 from pathlib import Path
 
 from arbiter.config import load_config
@@ -19,13 +18,13 @@ rag = cfg.rags["downloads"]
 goldset = load_goldset(Path("goldset/downloads.yaml"))
 print(f"Embedder: {cfg.backends.embed_model}  DB: {cfg.db_path}", flush=True)
 print(
-    f"{'HyDE':<6} {'Antworten':>10} {'Beleg ok':>9} {'ohne Beleg':>11} "
+    f"{'Lauf':<6} {'Antworten':>10} {'Beleg ok':>9} {'ohne Beleg':>11} "
     f"{'Zitate':>7} {'verworfen':>10}",
     flush=True,
 )
 
-for hyde in (False, True):
-    pipeline = Pipeline(cfg, replace(rag, hyde=hyde))
+for lauf in (1,):
+    pipeline = Pipeline(cfg, rag)
     antworten = richtig = falsch = zitate = 0
     for gold in goldset:
         antwort = pipeline.ask(gold.frage)
@@ -44,6 +43,6 @@ for hyde in (False, True):
         if (antwort.text or "").startswith("Belegstelle:"):
             zitate += 1
     print(
-        f"{hyde!s:<6} {antworten:>10} {richtig:>9} {falsch:>7} {len(goldset) - antworten:>10}",
+        f"{lauf!s:<6} {antworten:>10} {richtig:>9} {falsch:>7} {len(goldset) - antworten:>10}",
         flush=True,
     )

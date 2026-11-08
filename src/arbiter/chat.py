@@ -1,8 +1,8 @@
-"""HyDE: a hypothetical answer document as a second query (spec D).
+"""Chat backend: OpenAI-compatible client (spec F1, G1).
 
-The chat backend is reached through the OpenAI-compatible
-``/v1/chat/completions`` route, so the same client works against llama-swap.
-The document is deliberately kept short: it is a query, not an answer.
+Reached over ``/v1/chat/completions`` — llama-swap speaks the same route. The client
+delivers three things: plain text for the answer and the repair step, and the
+probability distribution of the first token for the gate.
 """
 
 from __future__ import annotations
@@ -10,19 +10,6 @@ from __future__ import annotations
 import math
 
 import httpx
-
-SYSTEM_TEMPLATE = (
-    "Du hilfst beim Suchen in einem Dokumentenarchiv. "
-    "Der Bestand enthält: {description}. "
-    "Antworte auf Deutsch. Nenne keine ganzen Sätze, sondern nur eine Liste von "
-    "Fachbegriffen, Eigennamen, Zahlen und Wortverbindungen, die in dem Abschnitt "
-    "stehen müssten, der diese Frage beantwortet. Höchstens zwölf Einträge, "
-    "durch Komma getrennt. Erfinde keine Zahlen."
-)
-
-USER_TEMPLATE = (
-    "Frage: {question}\n\nWelche Begriffe und Zahlen müsste der antwortende Abschnitt enthalten?"
-)
 
 
 class ChatError(RuntimeError):
@@ -109,22 +96,3 @@ class ChatClient:
 
     def close(self) -> None:
         self._client.close()
-
-
-def build_prompt(question: str, description: str) -> tuple[str, str]:
-    """System and user message for one HyDE document."""
-    return (
-        SYSTEM_TEMPLATE.format(description=description),
-        USER_TEMPLATE.format(question=question),
-    )
-
-
-def truncate(text: str, max_chars: int) -> str:
-    """Cut to ``max_chars`` without ending inside a word."""
-    if len(text) <= max_chars:
-        return text.strip()
-    cut = text[:max_chars]
-    space = cut.rfind(" ")
-    if space > max_chars // 2:
-        cut = cut[:space]
-    return cut.strip()

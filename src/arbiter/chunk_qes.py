@@ -15,6 +15,7 @@ gap chunks afterwards.
 
 from __future__ import annotations
 
+import heapq
 import math
 from dataclasses import dataclass
 
@@ -194,31 +195,40 @@ def _greedy(
     abgedeckt: set[tuple[int, int]] = set()
     gewaehlt: list[_Fenster] = []
     verbraucht = 0.0
+    if not kandidaten:
+        return []
 
-    while True:
-        bester: _Fenster | None = None
-        bester_wert = 0.0
-        for kandidat in kandidaten:
-            if kandidat in gewaehlt or verbraucht + kandidat.kosten > budget:
-                continue
-            nutzen = _nutzen(
-                text, spannen, kandidat, belege, treffer, gewichte, abgedeckt, parameter
-            )
-            if nutzen <= 0.0:
-                continue
-            dichte = nutzen / kandidat.kosten
-            if dichte > bester_wert + 1e-12 or (
-                abs(dichte - bester_wert) <= 1e-12
-                and bester is not None
-                and (kandidat.start, kandidat.ende) < (bester.start, bester.ende)
-            ):
-                bester = kandidat
-                bester_wert = dichte
-        if bester is None:
-            break
-        gewaehlt.append(bester)
-        verbraucht += bester.kosten
-        abgedeckt |= paare_im_fenster(bester.erster, bester.letzter, belege, treffer)
+    # Lazy-Evaluation wie im Papier (Algorithmus 2): der einmal berechnete Nutzen ist
+    # eine obere Schranke, weil die Abdeckung nur wachsen kann. Nur der oberste
+    # Kandidat wird neu gerechnet. Ohne diesen Schritt prüft der Greedy bei jeder
+    # Auswahl alle Fenster — auf ix.26.13.pdf (1309 Abschnitte) waren das über zwei
+    # Stunden Rechenzeit ohne Ergebnis.
+    heap: list[tuple[float, int]] = []
+    for nummer, kandidat in enumerate(kandidaten):
+        nutzen = _nutzen(text, spannen, kandidat, belege, treffer, gewichte, abgedeckt, parameter)
+        if nutzen > 0.0:
+            heap.append((-(nutzen / kandidat.kosten), nummer))
+    heapq.heapify(heap)
+
+    genommen: set[int] = set()
+    while heap:
+        _, nummer = heapq.heappop(heap)
+        if nummer in genommen:
+            continue
+        kandidat = kandidaten[nummer]
+        if verbraucht + kandidat.kosten > budget:
+            continue
+        nutzen = _nutzen(text, spannen, kandidat, belege, treffer, gewichte, abgedeckt, parameter)
+        if nutzen <= 0.0:
+            continue
+        dichte = nutzen / kandidat.kosten
+        if heap and dichte < -heap[0][0] - 1e-12:
+            heapq.heappush(heap, (-dichte, nummer))
+            continue
+        gewaehlt.append(kandidat)
+        genommen.add(nummer)
+        verbraucht += kandidat.kosten
+        abgedeckt |= paare_im_fenster(kandidat.erster, kandidat.letzter, belege, treffer)
 
     return _mit_singleton_und_rest(
         text, spannen, kandidaten, belege, treffer, gewichte, gewaehlt, budget, parameter
@@ -308,10 +318,11 @@ def _mit_singleton_und_rest(
         gewaehlt = [bester_einzelner]
 
     verbraucht = sum(fenster.kosten for fenster in gewaehlt)
+    # Nur Fenster mit einem Trefferblock koennen f2 verbessern; alle anderen zu pruefen
+    # kostete auf grossen Dokumenten Minuten ohne Wirkung.
+    relevant = [kandidat for kandidat in kandidaten if _hat_treffer(kandidat, treffer)]
     while True:
-        rest = _rest_kandidat(
-            text, spannen, kandidaten, belege, treffer, gewaehlt, budget - verbraucht
-        )
+        rest = _rest_kandidat(relevant, belege, treffer, gewaehlt, budget - verbraucht)
         if rest is None:
             break
         gewaehlt.append(rest)
@@ -319,9 +330,13 @@ def _mit_singleton_und_rest(
     return gewaehlt
 
 
+def _hat_treffer(kandidat: _Fenster, treffer: list[set[int]]) -> bool:
+    return any(
+        any(kandidat.erster <= block <= kandidat.letzter for block in hits) for hits in treffer
+    )
+
+
 def _rest_kandidat(
-    text: str,
-    spannen: list[tuple[int, int]],
     kandidaten: list[_Fenster],
     belege: list[tuple[int, tuple[int, ...]]],
     treffer: list[set[int]],
@@ -341,8 +356,11 @@ def _rest_kandidat(
     aktuell = _bestandsanteile(belege, treffer, gewaehlt)
     bester: _Fenster | None = None
     bester_wert = 0.0
+    schon_gewaehlt = {(fenster.erster, fenster.letzter) for fenster in gewaehlt}
     for kandidat in kandidaten:
-        if kandidat in gewaehlt or kandidat.kosten > restbudget:
+        if (kandidat.erster, kandidat.letzter) in schon_gewaehlt:
+            continue
+        if kandidat.kosten > restbudget:
             continue
         gewinn = 0.0
         for nummer, (_, indizes) in enumerate(belege):

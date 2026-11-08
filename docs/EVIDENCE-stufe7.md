@@ -66,7 +66,7 @@ einem Lauf nach der letzten Codeänderung.
 
 | Ebene | Befehl | Ergebnis |
 |---|---|---|
-| Testsuite | `uv run pytest -q` | *(wird nach dem letzten Lauf eingetragen)* |
+| Testsuite | `uv run pytest -q` | 211 passed |
 | Typen | `uv run mypy src` | 0 Fehler |
 | Lint/Format | `uv run ruff check`, `uv run ruff format --check` | sauber |
 | Mutation | `uv run python scripts/mutants.py` | 33/33 getötet |
@@ -94,4 +94,38 @@ einem Lauf nach der letzten Codeänderung.
 
 ## 5. Messung (Stufe 7.3)
 
-*(wird nach dem Lauf eingetragen)*
+Korpus `~/Downloads`, 5 Dateien mit Text, Goldset `goldset/downloads.yaml`, 31 Fragen
+mit Belegseite. Gemessen wird die Fusion ohne Reranker (Stufe „nur Fusion"), weil die
+Frage dem Chunking gilt.
+
+| Strategie | Abschnitte | Index (Zeichen) | Recall@10 |
+|---|---|---|---|
+| fenster (bisheriger Stand) | 1511 | 943 914 | 0,538 |
+| struktur | 1643 | 860 839 | **0,692** |
+| qes | 6180 | 2 469 004 | 0,538 |
+| auto | 6180 | 2 469 004 | 0,538 |
+
+Reproduzierbar mit `scripts/messe_chunking.py` (eigener Store je Strategie).
+
+### Was die Zahlen sagen
+
+1. **`struktur` gewinnt**: +15,4 Prozentpunkte gegen den bisherigen Stand, bei
+   kleinerem Index (860 839 statt 943 914 Zeichen). Das ist der einzige Gewinn, den
+   diese Stufe belegt.
+2. **`qes` bringt hier nichts**: gleicher Recall wie `fenster`, bei 2,6-fachem Index
+   und dem Vielfachen an Rechenzeit. Die Frage-Beleg-Paare stammen aus dem Dokument
+   selbst; sie bilden die 31 echten Fragen nicht ab.
+3. **Der Entscheider verliert**: Er wählte `qes` für alle fünf Dateien (Werte 0,00,
+   0,02, 0,05, 0,06, 0,48 — alle unter 0,60) und damit die schlechteste Strategie.
+   Sein Maß sagt auf diesem Korpus das Messergebnis nicht voraus. N3 ist eine
+   unbelegte Annahme.
+
+### Grenzen dieser Messung
+
+- Eine Fusion-Stufe, kein Reranker, keine Prüfschicht. Recall@10 misst nur, ob die
+  Belegseite im Kandidatenpool liegt.
+- Fünf Dateien, 31 Fragen. Ein Unterschied von zwei Fragen sind 6,5 Prozentpunkte.
+- Complete-Evidence-Recall (D26 b) fehlt: das Goldset trägt nur Belegseiten, keine
+  Belegsätze. Ohne Annotation ist die Kennzahl nicht berechenbar.
+- QES ist auf diesem Korpus nicht benutzbar: Ingest vor allem Embedding-Zeit
+  (Hit-Gate bettet jeden Satz ein), Index 2,6-fach.

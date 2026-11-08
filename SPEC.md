@@ -716,3 +716,44 @@ das Verhältnis nahezu gleich; die Abweichung steht im Bericht.
 
 **Status:** Revision 2026-11-08 nach Lesen beider Papiere. Wartet auf Freigabe
 der Abschnitte 11.1–11.9 und der Entscheidungen D20–D31.
+
+---
+
+### 11.10 Umsetzungsbefund nach der ersten Messung (2026-11-08)
+
+**Lazy-Evaluation ist Pflicht, nicht Feinschliff.** Der naive Greedy prüft bei jeder
+Auswahl alle Kandidatenfenster. Auf `ix.26.13.pdf` (626 326 Zeichen, 1309
+Struktur-Abschnitte) lief er über zwei Stunden ohne Ergebnis und wurde abgebrochen.
+Mit Lazy-Evaluation über einen Heap, wie im Papier (Algorithmus 2): **47 Sekunden**.
+Das Verfahren selbst ist unverändert, der Nutzen eines einmal berechneten Kandidaten
+ist eine obere Schranke, weil die Abdeckung nur wachsen kann.
+
+**Grenze der Methode auf großen Dokumenten.** Dasselbe PDF ergibt 5322 QES-Abschnitte
+und einen Index vom 3,12-fachen der Dokumentlänge — genau das Budget aus dem Papier.
+Der Ingest ist damit vor allem ein Embedding-Aufwand: für den Hit-Gate wird jeder
+Satz eines Dokuments eingebettet. Bei 500 PDFs sind das Stunden, nicht Minuten.
+
+**`f₂` und Singleton-Schutz sind auf unseren Korpora nicht beobachtbar.** Bei
+normalisierten Gewichten (`w = 1/(m·|R_j|)`, Summe 1) hat das Fenster, das mehr
+Belege einer Frage trägt, immer die höhere Dichte als mehrere kleine Fenster. Der
+Greedy deckt die Belege deshalb schon optimal ab, bevor `f₂` greifen kann. Beide
+Bauformen sind implementiert und stehen im Code; kein Test kann sie von einer
+Variante ohne sie unterscheiden. Ein Test, der das behauptet, wäre Theater — es gibt
+keinen. Ein entsprechender Mutant ist in `scripts/mutants.py` mit Begründung
+ausgelassen.
+
+**Erste Messung (Fusion ohne Reranker, 31 Goldfragen, eigener Korpus):**
+
+| Strategie | Abschnitte | Index (Zeichen) | Recall@10 |
+|---|---|---|---|
+| fenster (bisheriger Stand) | 1511 | 943 914 | 0,538 |
+| struktur | 1643 | 860 839 | **0,692** |
+| qes | 6180 | 2 469 004 | 0,538 |
+| auto | 6180 | 2 469 004 | 0,538 |
+
+**Der Entscheider verliert.** Er wählte für alle fünf Dateien `qes` (Werte 0,00 bis
+0,48, alle unter der Schwelle 0,60) — und damit die Strategie mit dem schlechtesten
+Ergebnis und dem 2,6-fachen Index. `struktur` war in der Messung um 15,4
+Prozentpunkte besser, obwohl der Entscheider diesen Dateien kaum Struktur zubilligt.
+Der Zusammenhang zwischen meinem Maß und dem Messergebnis ist auf diesem Korpus
+nicht gegeben. Die Formel aus N3 ist damit eine unbelegte Annahme, keine Begründung.

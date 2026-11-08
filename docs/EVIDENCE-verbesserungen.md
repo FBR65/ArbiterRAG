@@ -381,6 +381,35 @@ Zwei Ursachen, beide gemessen:
    richtige (Frage 4). Ihre Fehlerrate ist unbekannt; sie ist der einzige Baustein ohne
    Kalibrierung.
 
+## K — Prompt-Spuren in der Antwort (behoben)
+
+Beobachtung aus der TUI: Die Antwort enthielt „Das steht nicht in den Auszügen, aber es
+wird erwähnt …" und ein sinnloses „NDEBUG". Ursache war der Prompt selbst: Er schrieb
+die Ablehnungsformel im Klartext vor („Wenn die Auszüge die Frage nicht beantworten,
+antworte: Das steht nicht in den Auszügen"), und das Modell gab sie als Satz zurück.
+
+Behoben durch drei Änderungen:
+
+1. **Token statt Satz.** Der Prompt verlangt bei fehlender Antwort nur das Wort
+   `KEINE_ANTWORT`. Erscheint es in der Antwort, lautet das Ergebnis „Die Auszüge
+   beantworten die Frage nicht" — es wird nie als Satz ausgeliefert.
+2. **Verbot im Prompt.** „Schreibe keinen Satz über die Auszüge selbst, keine Vorrede,
+   keine Anmerkung zur eigenen Antwort."
+3. **Filter vor der Prüfung.** Sätze über die Auszüge („das steht nicht in den
+   Auszügen", „die Auszüge enthalten", „es wird erwähnt") werden verworfen und
+   erscheinen nie im Ergebnis — auch dann nicht, wenn das Modell sie wieder bildet.
+
+Gemessen auf dem deutschen Korpus, 21 Fragen (12 beantwortbar):
+
+| Stand | Antworten | Beleg ok | ohne Beleg | Zitate |
+|---|---|---|---|---|
+| vorher | 13 | 12 | 1 | 8 |
+| **nachher** | 10 | **10** | **0** | 11 |
+
+Der Fehler ist weg, und keine Antwort nennt mehr eine falsche Quelle — dafür drei
+Antworten weniger und drei Zitate mehr: das Modell formuliert vorsichtiger. Für das Ziel
+„keine Halluzination" ist das der richtige Tausch, für die Abdeckung nicht.
+
 ## Endstand der Kette
 
 | Stufe | Recall@10 | nDCG@10 | Beleg ok (von 23) |

@@ -13,8 +13,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from arbiter.answer import Quelle, build_answer_prompt
-from arbiter.answer import KEINE_ANTWORT
+from arbiter.answer import KEINE_ANTWORT, Quelle, build_answer_prompt
 from arbiter.check import build_claim_prompt, build_repair_prompt, ist_meta, split_claims
 from arbiter.chunk import chunk_text
 from arbiter.config import Config, Rag

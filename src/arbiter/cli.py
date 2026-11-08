@@ -10,13 +10,14 @@ import argparse
 import json
 import sys
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from pathlib import Path
 
 from arbiter.config import Config, ConfigError, Rag, load_config
 from arbiter.embedding import EmbeddingError, HttpEmbedder
 from arbiter.eval import format_table, load_goldset, run
 from arbiter.output import antwort_json
-from arbiter.pipeline import Pipeline, QuestionTooLong
+from arbiter.pipeline import DateiBericht, Pipeline, QuestionTooLong
 from arbiter.store import StoreError
 
 EXIT_OK = 0
@@ -48,6 +49,10 @@ def main(
             file=sys.stderr,
         )
         return EXIT_USAGE
+
+    if args.command == "index" and args.strategie is not None:
+        # The override belongs to this run, not to the corpus (spec N5).
+        rag = replace(rag, chunk_strategie=args.strategie)
 
     def build() -> Pipeline:
         if factory is not None:
@@ -90,9 +95,24 @@ def _index(pipeline: Pipeline) -> int:
         f"{report.ocr_pages} Seiten per OCR, {report.duplicates} Dubletten, "
         f"{report.entfernt} Dateien aus dem Index entfernt"
     )
+    for datei in report.dateien:
+        print(_datei_zeile(datei))
     for warning in report.warnings:
         print(f"  Hinweis: {warning}", file=sys.stderr)
     return EXIT_OK
+
+
+def _datei_zeile(datei: DateiBericht) -> str:
+    """One line per file: which strategy was chosen, and why (spec N4)."""
+    if datei.uebersteuert or datei.kennzahlen is None or datei.wert is None:
+        herkunft = "übersteuert"
+    else:
+        herkunft = (
+            f"Wert {datei.wert:.2f}, Kopfanteil {datei.kennzahlen.kopf_anteil:.2f}, "
+            f"Köpfe {datei.kennzahlen.koepfe_pro_1000:.1f}/1000 Zeichen, "
+            f"Verweise {datei.kennzahlen.xrefs_pro_1000:.1f}/1000 Zeichen"
+        )
+    return f"  {datei.quelle}: {datei.strategie} ({herkunft}), {datei.chunks} Abschnitte"
 
 
 def _search(pipeline: Pipeline, question: str) -> int:
@@ -171,6 +191,12 @@ def _parser() -> argparse.ArgumentParser:
 
     index = sub.add_parser("index", help="Korpus indizieren")
     index.add_argument("rag")
+    index.add_argument(
+        "--strategie",
+        choices=["auto", "struktur", "qes", "fenster"],
+        default=None,
+        help="Chunk-Strategie erzwingen (Standard: auto, der Entscheider wählt)",
+    )
 
     search = sub.add_parser("search", help="Passagen suchen")
     search.add_argument("rag")

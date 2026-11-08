@@ -32,6 +32,8 @@ class Record:
     ocr_paddle: str = ""
     ocr_ueberlappung: float = 0.0
     eltern: str = ""
+    seite_ende: int | None = None
+    strategie: str = ""
 
 
 @dataclass(frozen=True)
@@ -188,6 +190,8 @@ class Store:
                 ("ocr_paddle", "''"),
                 ("ocr_ueberlappung", "0.0"),
                 ("eltern", "''"),
+                ("seite_ende", "-1"),
+                ("strategie", "''"),
             )
             if name not in present
         }
@@ -222,37 +226,32 @@ class Store:
         table.add([{"quelle": quelle, "fingerabdruck": fingerabdruck}])
 
     def page_text(self, rag: str, quelle: str, seite: int) -> str:
-        """All chunks of one page as one text.
+        """All chunks that touch one page as one text (spec O3).
 
         The sentence check compares an answer sentence with the page it cites, not with
         the 600-character window that happened to be retrieved: the statement may stand
-        two sentences further on the same page.
+        two sentences further on the same page. A chunk that starts on page 3 and ends
+        on page 4 belongs to both pages, otherwise a cited page would look unsupported.
         """
         table = self._table(rag)
         sicher = quelle.replace("'", "''")
         try:
             rows = (
                 table.search()
-                .where(f"quelle = '{sicher}' AND seite = {int(seite)}")
-                .select(["text"])
-                .limit(1000)
+                .where(f"quelle = '{sicher}'")
+                .select(["id", "text", "seite", "seite_ende"])
+                .limit(5000)
                 .to_list()
             )
         except Exception:
             return ""
-        if not rows:
+        treffer = [row for row in rows if _deckt(row, seite)]
+        if not treffer:
             # Textdateien haben keine Seitenzahl; dann gilt das ganze Dokument.
-            try:
-                rows = (
-                    table.search()
-                    .where(f"quelle = '{sicher}'")
-                    .select(["text"])
-                    .limit(1000)
-                    .to_list()
-                )
-            except Exception:
-                return ""
-        return " ".join(str(row["text"]) for row in rows)
+            treffer = rows
+        if not treffer:
+            return ""
+        return " ".join(str(row["text"]) for row in sorted(treffer, key=lambda r: str(r["id"])))
 
     def _table_or_create(self, rag: str, dim: int) -> Any:
         try:
@@ -275,6 +274,8 @@ class Store:
                 pa.field("ocr_paddle", pa.string()),
                 pa.field("ocr_ueberlappung", pa.float64()),
                 pa.field("eltern", pa.string()),
+                pa.field("seite_ende", pa.int32()),
+                pa.field("strategie", pa.string()),
             ]
         )
 
@@ -293,6 +294,18 @@ def _ocr_fields(row: dict[str, Any]) -> dict[str, Any]:
         "ocr_ueberlappung": float(row.get("ocr_ueberlappung", 0.0) or 0.0),
         "eltern": str(row.get("eltern", "") or ""),
     }
+
+
+def _deckt(row: dict[str, Any], seite: int) -> bool:
+    """True when the row's page range includes ``seite`` (spec O3).
+
+    Rows from an older index have ``seite_ende`` = -1; for them the start page counts.
+    """
+    start = int(row.get("seite", -1) or -1)
+    ende = int(row.get("seite_ende", -1) or -1)
+    if start < 0:
+        return False
+    return start <= seite <= max(start, ende)
 
 
 def _table_name(entry: object) -> str:
@@ -316,4 +329,6 @@ def _row(record: Record) -> dict[str, object]:
         "ocr_paddle": record.ocr_paddle,
         "ocr_ueberlappung": record.ocr_ueberlappung,
         "eltern": record.eltern,
+        "seite_ende": -1 if record.seite_ende is None else record.seite_ende,
+        "strategie": record.strategie,
     }

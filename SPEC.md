@@ -361,3 +361,350 @@ bleibt die Wahrheit; die API ist ein weiterer dünner Client wie die CLI (H5).
 Aufwand: rund ein halber Tag, mit Tests und Nachweis.
 
 Freigabe für D15–D19 und diesen Abschnitt: danach beginnt die Stufe mit RED.
+
+---
+
+## 11. Stufe 7 — Zwei Chunking-Strategien mit Entscheider (Entwurf, wartet auf Freigabe)
+
+Auftrag 2026-11-08, wörtlich: „1. QESChunker greedy + Overlap und Structure-aware
+2. Implementiere das in ArbiterRAG 3. Beim ingest der Daten soll ein ‚Entscheider'
+welche Chunk strategie die beste für das aufzunehmende PDF ist."
+
+Quelle der beiden Verfahren: Vishal Mysore, „Best RAG Chunking Strategy in 2026",
+Nov 2026, sowie die dort genannten Papiere arXiv 2610.36557 (QESChunker) und
+arXiv 2610.26313 (StrucChunk).
+
+Der Artikel ist ein Toy-Benchmark: ein Dokument, 25 Fragen, nur BM25, eine Frage
+entspricht 7,7 Prozentpunkten. Er belegt Mechanismen, keine Rangfolge. Deshalb
+enthält diese Stufe eine Messung (7.3) und keine zugesagte Verbesserung.
+
+### 11.1 Was sich ändert, was bleibt
+
+| Punkt | Vorher | Nachher |
+|---|---|---|
+| Chunk-Grenze | je Seite, `chunk_text` (B6) | je Datei (D20), Strategie je Datei |
+| Strategien | eine | `struktur`, `qes`, `fenster` (Rückfall) |
+| Entscheider | keiner | deterministisch, ohne Modell (D21) |
+| Datensatz | `id, text, quelle, seite, hash, vector, …` | zusätzlich `strategie`, `seite_ende` |
+| Suche, Reranker, Gate, Antwort | — | unverändert |
+
+`chunk_text` bleibt bestehen und wird zur Strategie `fenster` (B6 gilt weiter).
+
+### 11.2 Offene Entscheidungen
+
+| ID | Frage | Optionen | Empfehlung |
+|---|---|---|---|
+| D20 | Chunk-Grenze: pro Seite oder pro Datei? | (a) pro Datei, Seiten über Zeichenposition zugeordnet (b) pro Seite wie heute | **(a)** — Struktur läuft über Seitengrenzen; pro Seite zerbricht jeder Abschnitt an jeder Seitengrenze. Kosten (b): strukturtreues Chunking verliert seinen Kern |
+| D21 | Wie entscheidet der Entscheider? | (a) deterministische Heuristik über Überschriften und Querverweise (b) Chat-Modell klassifiziert (c) Heuristik, Modell nur im Grenzband | **(a)** — prüfbar, erklärbar, kein Modellaufruf je Datei, gleiche Datei ergibt gleiche Strategie. Kosten (b): ein Aufruf je Datei, nicht deterministisch, Test nur mit Attrappe |
+| D22 | Woher kommen die Frage-Beleg-Paare für QESChunker? | (a) Chat-Modell erzeugt sie je Datei (b) keine Erzeugung, QES fällt aus (c) Modell, mit definiertem Rückfall | **(c)** — wie im Papier; ohne QE-Paare hat der Greedy keinen Nutzen und wird durch den Rückfall ersetzt. Kosten: ein bis vier Modellaufrufe je **neuer** Datei (der Fingerabdruck B12 verhindert Wiederholung) |
+| D23 | Querverweise beim Indexieren auflösen? | (a) nur Überschriftpfad voranstellen (b) Pfad plus aufgelöste Verweise (c) nichts | **(b)** — im Artikel war die Verweisauflösung der Grund, warum der Graph 62 % → 69 % brachte; Regel und Definition werden ein Treffer |
+| D24 | Wo steht die gewählte Strategie? | (a) nur im Indexbericht (b) zusätzlich als Spalte `strategie` je Zeile (c) zusätzlich eigene Tabelle | **(b)** — ohne Spalte ist keine spätere Messung je Strategie möglich; eine Tabelle wäre doppelte Buchführung |
+| D25 | Strategie übersteuerbar? | (a) nur automatisch (b) `--strategie auto\|struktur\|qes\|fenster` | **(b)** — ohne Übersteuerung ist die Messung in 7.3 nicht möglich |
+| D26 | Wie wird gemessen? | (a) Seiten-Recall@10 vor/nach auf dem bestehenden Goldset, je Strategie (b) zusätzlich Complete-Evidence-Recall, dafür `belege` (wörtliche Sätze) je Frage eintragen (c) keine Messung | **(a)** jetzt; (b) nur, wenn du die 31 Fragen annotierst (etwa 2 h Handarbeit) |
+| D27 | Darf ein aufgelöster Querverweis `chunk_chars` überschreiten? | (a) ja, Anhang kommt zum eigenen Text hinzu (b) nein, eigener Text schrumpft | **(a)** — der Anhang ist Beiwerk zur Suche, kein Inhalt des Abschnitts; (b) würde kurze Abschnitte weiter zerstückeln |
+| D28 | Auch die exakte DP-Variante aus dem Papier? | (a) nein (b) ja, als vierte Strategie | **(a)** — im Artikel war sie die schlechteste (15 % gehalten); Kosten (b) etwa 0,3 Tag plus Test |
+| D29 | Auch Chunk-Graph und Wortbudget-Assembler (SpectRAG) auf der Suchseite? | (a) nein (b) ja | **(a)** — nicht Teil des Auftrags; Kosten (b) etwa 1 Tag, ändert C und E |
+
+Unbeantwortete IDs werden nicht stillschweigend angenommen. Ohne deine Antwort
+beginnt kein Code.
+
+### 11.3 Verhalten (Abnahmekriterien)
+
+#### K. Gemeinsame Form
+
+- **K1** Eine Datei ergibt eine Liste `Chunk`. Ein `Chunk` hat `text` (der
+  indizierte Text), `start`, `ende` (Zeichenpositionen des **eigenen** Textes im
+  Dokumenttext) und `strategie`.
+- **K2** `text[start:ende]` steht nach Leerraum-Normalisierung wörtlich in
+  `chunk.text`. Kopfzeile (B6) und Verweis-Anhang stehen davor bzw. dahinter.
+- **K3** Jedes Zeichen des Dokumenttextes außer Leerraum liegt in mindestens
+  einem Chunk. Kein Textverlust.
+- **K4** Leerer Text ergibt keine Chunks.
+- **K5** Der eigene Text eines Chunks ist höchstens `chunk_chars` Zeichen lang.
+  Kopfzeile und Verweis-Anhang kommen hinzu (D27).
+- **K6** Gleiche Eingabe und gleiche Frage-Beleg-Paare ergeben gleiche Chunks.
+
+#### L. Strategie `struktur` (StrucChunk-Stil)
+
+- **L1** Eine Zeile gilt als Überschrift, wenn eine Regel greift:
+
+  | Regel | Muster | Ebene |
+  |---|---|---|
+  | Markdown | `^\s{0,3}#{1,6}\s+\S` | Anzahl `#` |
+  | Nummerierung | `^\s*(\d+\.)+\d*\s+\S` | Anzahl Zahlengruppen |
+  | Paragraph | `^\s*§\s*\d+` | 2 |
+  | Wortkopf | `^\s*(Kapitel\|Abschnitt\|Anhang\|Teil)\s+[0-9IVXLC]+\b` | 2 |
+  | Großzeile | 3–80 Zeichen, ≥ 2 Wörter, nur Großbuchstaben, kein `. ! ? :` | 2 |
+
+- **L2** Ein Abschnitt ist eine Überschrift der Ebene ≥ `struktur_ebene` (Default
+  2) plus alle Zeilen bis zur nächsten Überschrift gleicher oder höherer Ebene.
+  Text vor der ersten Überschrift ist ein Abschnitt ohne Pfad.
+  *Präzisiert 2026-11-08 vor der Umsetzung:* Ein Abschnitt endet an der nächsten
+  Überschrift **jeder** Ebene. Unterabschnitte werden eigene Chunks; der
+  Elternabschnitt trägt nur seinen eigenen Rumpf. Damit steht kein Text doppelt
+  im Index, und trotzdem bleibt kein Text ungefunden. Der Pfad nennt alle
+  übergeordneten Überschriften.
+- **L3** Ein Chunk ist ein Abschnitt. Er enthält nie Rumpf aus zwei Abschnitten.
+- **L4** Ein Rumpf länger als `chunk_chars` wird an Satzgrenzen geteilt, in
+  Lesereihenfolge, ohne Überlappung.
+- **L5** Der Chunk-Text beginnt mit `[<Pfad>] `, Pfad = Überschriften von der
+  obersten erkannten Ebene bis zur eigenen, getrennt durch ` › `, zum Beispiel
+  `[2 Anreise › 2.1 Torzeiten] `. Ohne Pfad kein Präfix.
+- **L6** Ein Verweis im Rumpf wird aufgelöst, wenn er auf einen vorhandenen
+  Abschnitt zeigt. Erkannt werden `siehe Abschnitt 1.3`, `nach Ziffer 4.2`,
+  `gemäß § 5`, `vgl. 2.1`, `Section 4.2`, `Kapitel 3`. Angehängt wird
+  `\n↳ <Nummer> <Titel>: ` plus bis zu `xref_chars` Zeichen des Ziel-Rumpfes.
+  Höchstens `xref_max` Verweise je Chunk, jeder Abschnitt höchstens einmal,
+  nie auf sich selbst.
+- **L7** Ein Verweis ohne Ziel wird übergangen. Er erzeugt keinen Anhang und
+  keine Warnung.
+- **L8** Seitenübergreifend: Ein Abschnitt, der auf zwei Seiten liegt, ist **ein**
+  Chunk.
+
+#### M. Strategie `qes` (QESChunker, Kosten-Nutzen-Greedy mit Überlappung)
+
+- **M1** Einheit ist der Satz. Satzgrenzen sind `.`, `!`, `?` mit folgendem
+  Leerraum; `1.2` und `1.2-meter` zerfallen nicht.
+- **M2** Ein Frage-Beleg-Paar ist eine Frage plus ein bis drei Belegstellen. Eine
+  Belegstelle ist ein Satz, der nach Leerraum-Normalisierung wörtlich im Dokument
+  steht. Ein Paar mit einer nicht wörtlichen Belegstelle wird verworfen.
+- **M3** Erzeugung durch das Chat-Modell (`qe_model`, leer = `chat_model`), ein
+  Aufruf je Fenster von `qe_fenster` Zeichen (Default 6000), höchstens
+  `qe_fenster_max` Fenster (Default 4) je Datei, höchstens `qe_fragen` Fragen
+  (Default 6) je Fenster. Antwortformat je Paar zwei Zeilen: `FRAGE: …` und
+  `BELEG: …`. Mehrere Belege einer Frage stehen in mehreren `BELEG:`-Zeilen.
+- **M4** Kandidatenfenster sind alle Satzfolgen mit eigenem Text bis
+  `chunk_chars` Zeichen und mindestens `chunk_chars`/2 Zeichen.
+- **M5** Der Nutzen eines Fensters ist: Zahl der neu überdeckten Belegstellen
+  plus Zahl der neu vollständigen Fragen (alle ihre Belege im Fenster) plus
+  α je neu überdecktem Zeichen, α = 0,02.
+- **M6** Auswahl: solange ein Kandidat in das Budget passt, wird der Kandidat mit
+  dem größten Nutzen je Zeichen genommen. Budget ist
+  `qes_budget_faktor` × Dokumentlänge (Default 1,35). Stop, wenn kein Kandidat
+  passt oder der Nutzen 0 ist.
+- **M7** Sätze außerhalb jedes gewählten Fensters werden in Chunks bis
+  `chunk_chars` gepackt und mit ihren Positionen einsortiert (K3).
+- **M8** Ohne verwertbares Frage-Beleg-Paar oder bei Ausfall des Modells gilt
+  `chunk_text` (Strategie `fenster`), und der Bericht trägt die Warnung
+  `QE-Erzeugung ohne Ergebnis, Rückfall auf Fenster` mit Dateinamen. Kein
+  stiller Wechsel (N4).
+- **M9** Die Zahl der Modellaufrufe je Datei ist höchstens `qe_fenster_max`.
+
+#### N. Entscheider
+
+- **N1** `strategie(dokument) -> Entscheidung` ist eine reine Funktion: gleicher
+  Text ergibt gleiche Strategie, ohne Modell, ohne Netz.
+- **N2** Kennzahlen: `kopf_anteil` = Anteil der Nicht-Leerraum-Zeichen, die unter
+  einer Überschrift der Ebene ≥ `struktur_ebene` liegen; `koepfe_pro_1000` =
+  erkannte Überschriften je 1000 Zeichen; `xrefs_pro_1000` = erkannte Verweise je
+  1000 Zeichen.
+  *Präzisiert 2026-11-08 nach einem Fehlgriff im echten Lauf:* In `kopf_anteil`
+  zählen nur Abschnitte, deren eigener Text höchstens 1,5 × `chunk_chars` Zeichen
+  lang ist. Grund: Ein PDF mit einer einzigen Kapitelüberschrift über fast den
+  ganzen Text erreichte 0,60 Kopfanteil und wurde als strukturiert eingestuft,
+  obwohl es Fließtext ist. Ein Abschnitt, der nicht in einen Chunk passt, ist
+  keine Struktur, die dem Chunking hilft.
+- **N3** Wert =
+  `0.5 · min(1, kopf_anteil/0.60) + 0.3 · min(1, koepfe_pro_1000/2.0) + 0.2 · min(1, xrefs_pro_1000/1.0)`.
+  Ergebnis `struktur`, wenn Wert ≥ `struktur_schwelle` (Default 0.60), sonst `qes`.
+- **N4** Der Bericht führt je Datei eine Zeile mit `strategie`, Wert, den drei
+  Kennzahlen und der Zahl der Chunks. Bei Übersteuerung nennt er
+  `übersteuert` statt des Werts.
+- **N5** `arbiter index <rag> --strategie auto|struktur|qes|fenster`; `auto` ist
+  der Standard und folgt N3. Bei `fenster` wird kein Entscheider befragt.
+
+#### O. Indexierung
+
+- **O1** Gechunkt wird je Datei (D20). Die Seiten einer Datei werden in
+  Lesereihenfolge mit `\n` verkettet; die Seitenanfänge werden als Positionen
+  mitgeführt.
+- **O2** `seite` ist die Seite, in der `start` liegt; `seite_ende` die Seite, in
+  der `ende` liegt. `eltern` (bei `eltern_seite: true`) ist der Text aller Seiten
+  von `seite` bis `seite_ende`.
+- **O3** `Store.page_text(rag, quelle, seite)` liefert die Zeilen, deren Bereich
+  die Seite einschließt (`seite <= s <= seite_ende`). Ohne diese Änderung würde
+  ein seitenübergreifender Chunk bei der Satzprüfung nicht gefunden.
+- **O4** Die Tabelle erhält die Spalten `strategie` und `seite_ende`. Fehlen sie
+  in einer Tabelle einer älteren Version, werden sie nachgerüstet (B10).
+- **O5** Der Fingerabdruck (B12) enthält zusätzlich `chunk_strategie`,
+  `struktur_ebene`, `struktur_schwelle`, `xref_max`, `xref_chars`,
+  `qes_budget_faktor`, `qe_fenster`, `qe_fenster_max`, `qe_fragen`, `qe_model`.
+- **O6** Abschnitts-ID bleibt `<quelle>#<seite>#<laufende Nummer>`, die Nummer
+  zählt je Datei.
+
+### 11.4 Neue Konfigurationsschlüssel
+
+| Schlüssel | Default | Bedeutung |
+|---|---|---|
+| `chunk_strategie` | `auto` | `auto`, `struktur`, `qes`, `fenster` |
+| `struktur_ebene` | 2 | ab dieser Überschriftenebene beginnt ein Abschnitt |
+| `struktur_schwelle` | 0.60 | Wert, ab dem der Entscheider `struktur` wählt |
+| `xref_max` | 2 | Verweise je Chunk |
+| `xref_chars` | 320 | Zeichen des Ziel-Rumpfes im Anhang |
+| `qes_budget_faktor` | 1.35 | Indexbudget als Vielfaches der Dokumentlänge |
+| `qe_fenster` | 6000 | Zeichen je QE-Anfrage |
+| `qe_fenster_max` | 4 | Anfragen je Datei |
+| `qe_fragen` | 6 | Fragen je Fenster |
+| `qe_model` | `""` | leer = `backends.chat_model` |
+
+A3 gilt: Ein unbekannter Schlüssel bleibt ein Fehler, die neuen Schlüssel werden
+in `_RAG_KEYS` aufgenommen.
+
+### 11.5 Was die Stufe nicht tun darf
+
+- **Q5** Text verlieren. Jedes Zeichen steht in einem Chunk (K3).
+- **Q6** Eine Strategie stillschweigend tauschen. Jeder Rückfall steht mit Grund
+  im Bericht (M8, N4).
+- **Q7** Den Entscheider ein Modell aufrufen lassen (N1).
+- **Q8** Neue Laufzeit-Abhängigkeiten einführen. Die Stufe nutzt die
+  Standardbibliothek und vorhandene Pakete.
+- **Q9** Einem Verweis einen Anhang geben, der länger als `xref_chars` ist, oder
+  denselben Abschnitt zweimal anhängen.
+- **Q10** Die bestehende Suche, den Reranker, das Gate oder den Antwortschritt
+  ändern.
+
+### 11.6 Setup
+
+| Punkt | Inhalt |
+|---|---|
+| Neue Abhängigkeiten | keine |
+| Neue Dateien | `src/arbiter/chunk_structure.py`, `src/arbiter/chunk_qes.py`, `src/arbiter/chunk_choice.py`, Tests je Datei |
+| Geänderte Dateien | `src/arbiter/chunk.py` (Satzzerlegung, Weiche), `pipeline.py` (Index je Datei), `store.py` (zwei Spalten, `page_text`), `config.py` (zehn Schlüssel), `cli.py` (`--strategie`) |
+| Versionierung | Commit je Stufe (SPEC, 7.1, 7.2, 7.3), je Grün und Refactor |
+| Test | `uv run pytest`, `uv run ruff check`, `uv run mypy src` |
+| Mutanten | `scripts/mutants.py` um die neuen Funktionen erweitern |
+| Netztests | QE-Erzeugung nur hinter `-m integration`; Unit-Tests mit Attrappe (N5) |
+
+### 11.7 Stufen mit Stopp-Punkten
+
+| Stufe | Inhalt | Verhalten | Aufwand |
+|---|---|---|---|
+| 7.1 | Chunking je Datei, Strategie `struktur`, Entscheider, Bericht, Spalten, CLI-Schalter | K, L, N, O, Q5–Q10 | ~0,5 Tag |
+| 7.2 | Strategie `qes` mit QE-Erzeugung über das Chat-Modell und Rückfall | M | ~1 Tag |
+| 7.3 | Messung auf dem echten Korpus: Recall@10 vorher/nachher, je Strategie, plus Strategie je Datei | D26 (a) | ~0,5 Tag |
+
+Nach jeder Stufe folgt ein Bericht. Du darfst nach jeder Stufe anhalten.
+
+### 11.8 Messung in 7.3
+
+Die Zahlen aus dem Artikel sind **nicht** übertragbar: ein fiktives Dokument,
+BM25, ein Viertel der Fragen als Trainingssatz. Gemessen wird deshalb am eigenen
+Korpus mit dem eigenen Goldset.
+
+| Kennzahl | Was sie zeigt |
+|---|---|
+| Recall@10 je Strategie | ob die Belegseite im Kandidatenpool liegt |
+| Strategie je Datei mit Kennzahlen | ob der Entscheider plausibel trennt |
+| Chunks je Strategie, Indexgröße | Preis der Strategie |
+| Complete-Evidence-Recall | nur mit D26 (b), sonst offen |
+
+Ein Ergebnis, das nur insgesamt besser ist, sagt nichts. Bleibt der Recall
+gleich, steht das im Bericht als „ohne Wirkung", wie bei HyDE (D3).
+
+**Status:** Entwurf 2026-11-08. Wartet auf Freigabe. Kein Code vor der Freigabe.
+
+---
+
+### 11.9 Revision nach Lesen der Papiere (2026-11-08)
+
+Beide Papiere sind abrufbar: arXiv 2610.36557 (QESChunker, 27.10.2026) und
+arXiv 2610.26313 (StrucChunk, 19.10.2026). Der erste Entwurf dieses Abschnitts
+stützte sich nur auf den Blog. Der Blog vereinfacht beide Verfahren und erfindet
+Parameter. Die folgenden Punkte ersetzen die genannten Kriterien. Die alten
+Punkte bleiben lesbar stehen und sind mit „überholt" markiert.
+
+#### Abweichungen QESChunker
+
+| Punkt | Blog | Papier | Folge |
+|---|---|---|---|
+| Nutzen | Belegstelle überdeckt | gewichtetes Paar `(Frage, Beleg)` mit `w(j,r) = 1/(m·|R_j|)` | M5 überholt |
+| Auffindbarkeit | nicht modelliert | **Hit-Gate**: ein Chunk zählt nur, wenn er zusätzlich einen Treffer-Block `H_j` enthält — die `κ=5` ähnlichsten Blöcke der Frage-Embedding | M5 neu: braucht den Embedder beim Ingest |
+| Strukturterm | α = 0,02 je Zeichen (frei erfunden) | `λ(b)`: Absatzende 0,1 · λ, Satzende 0,005 · λ, Klauselende 0,001 · λ, sonst 0; λ = 10⁻⁴ bei Greedy | M5 überholt |
+| Budget | 1,35 × Zeichenlänge | 3 × Dokumentlänge in Blöcken | M6 überholt |
+| Fensterlängen | `chunk_chars`/2 … `chunk_chars` | 10. bis 90. Perzentil der Absatzlänge | M6 überholt |
+| Auswahl | Nutzen/Kosten, Stop bei Nutzen 0 | Kosten-Nutzen-Greedy mit **Singleton-Schutz** (bester Einzelchunk als Vergleich), Lazy-Evaluation, bei Sättigung Zusatzterm `f₂` (δ = 0,05) | M6 neu |
+| Frage-Beleg-Paare | 6 je Fenster | `n/5` Fragen je Dokument (n = Blöcke), Belege zu 1:1 kurz und kapitelübergreifend, mit automatischen Prüfungen | M3 überholt, neue Grenze D30 |
+
+Das Papier nennt seine eigene Grenze so: Die Methode passt für Dokumente, die
+wiederholt befragt werden und für die Überwachung vorliegt. Gemeint ist die Zahl
+der **Fragen je Dokument**, nicht die Zahl der Lesevorgänge. In einem Chatsystem
+wird ein Dokument bei jeder Frage erneut durchsucht; die Kosten für die
+Frage-Beleg-Paare fallen dagegen **einmal** beim Aufnehmen an und werden durch
+den Fingerabdruck (B12) nicht wiederholt. Für ein Chatsystem ist die Rechnung
+deshalb günstig. Das eigentliche Risiko ist ein anderes: Die Fragen erzeugt ein
+Modell aus demselben Text. Passen sie nicht zu den Fragen, die Nutzer wirklich
+stellen, dann passt der Index auf erfundene Fragen. Genau das prüft 7.3 mit den
+Fragen aus `goldset/downloads.yaml` — die sind von dir geschrieben, nicht erzeugt.
+
+#### Abweichungen StrucChunk
+
+| Punkt | Blog / Entwurf | Papier | Folge |
+|---|---|---|---|
+| Teilung | Rumpf über `chunk_chars` wird an Satzgrenzen geteilt | **logische Atomizität**: Abschnitt bleibt ganz bis 1,5 × L, erst darüber Teilung; dann Absatz-Packen mit Überlappung ρ | L4 überholt |
+| Präfix | Überschriftpfad | Breadcrumb **mit Dokumenttitel**: `[CrPC 1973 > Chapter XII > Section 167]`, Trenner ` > ` | L5 überholt |
+| Verweise | 2 Verweise × 320 Zeichen | `r_max = 3`, 200 Zeichen Zusammenfassung des Zielabschnitts | L6 überholt |
+| Länge | Zeichen | Tokens, geschätzt als Zeichen/4 | L4 neu: Grenze 1,5 × `chunk_chars` |
+
+StrucChunk wurde auf Rechtstexten mit sauberem PDF-Layout gemessen (pdfplumber,
+Abschnitts-DAG, 100 % Grenzpräzision). ArbiterRAG zieht Text mit pypdfium2 ohne
+Layout; Überschriften werden aus Zeilenmustern erkannt. Das ist schwächer, und
+der Bericht muss es zeigen, nicht behaupten.
+
+#### Was beide Papiere gemeinsam voraussetzen
+
+Beide messen mit **hybridem Retriever** (bge-m3 dicht + BM25, RRF k=60) und
+Abschnittstitel-Präfixen. Die aktuelle ArbiterRAG-Konfiguration fährt
+`hybrid: false`, weil dicht allein auf diesem Korpus besser war (C6). Die
+Gewinne der Papiere sind deshalb **nicht** übertragbar; 7.3 misst es.
+
+Der Entscheider (N) steht in **keinem** der beiden Papiere. Er ist eine Zutat
+von ArbiterRAG, begründet nur durch die Heuristik selbst, nicht durch Messung.
+
+#### Neue offene Entscheidungen
+
+| ID | Frage | Optionen | Empfehlung |
+|---|---|---|---|
+| D30 | Umfang der Frage-Beleg-Erzeugung je PDF (Papier: `n/5` Fragen, bei 1.500 Blöcken also 300 Fragen je Datei) | (a) wie Papier, ohne Obergrenze (b) Obergrenze `qe_fragen_max` (Default 60) je Datei, gleichmäßig über das Dokument verteilt (c) feste Zahl 20 je Datei | **(b)** — die Kosten fallen einmal beim Aufnehmen an, nicht je Frage; der Deckel begrenzt nur den ersten Lauf über ein großes Archiv. Der Wert ist eine Einstellung, kein Gesetz: bei häufig befragten Dokumenten höher setzen |
+| D31 | Strukturterm ohne verlässliche Absatzgrenzen (PDF-Text hat oft keine Leerzeile) | (a) Papier treu, Absatz = Leerzeile, ohne Leerzeilen nur Satzstufe (b) nur Satzstufe 0,005 (c) ohne Strukturterm | **(a)** — deterministisch, fällt weich zurück, keine erfundene Absatzerkennung |
+
+#### Geänderte Verhaltenskriterien
+
+- **M3 (neu)** Die Zahl der Fragen ist `min(ceil(n/5), qe_fragen_max)` je Datei,
+  n = Zahl der Sätze (D30). Die Fragen werden über das Dokument verteilt, nicht
+  je Fenster erzeugt. Belege stehen wörtlich im Text, sonst wird das Paar
+  verworfen.
+- **M5 (neu)** Nutzen eines Chunks ist die Summe `w(j,r)` über alle Paare, deren
+  Beleg `r` im Chunk liegt **und** deren Frage mindestens einen Treffer-Block
+  `H_j` im Chunk hat; `H_j` sind die `κ=5` Blöcke mit der größten Kosinus-Ähnlichkeit
+  zur Frage-Embedding, berechnet mit dem vorhandenen Embedder. Dazu der
+  Strukturterm aus 11.9.
+- **M6 (neu)** Budget 3 × Dokumentlänge (Zeichen), Kandidatenlängen vom 10. bis
+  90. Perzentil der Absatzlängen, ohne Absätze `chunk_chars`/2 bis `chunk_chars`.
+  Auswahl: Kosten-Nutzen-Greedy, danach Vergleich mit dem besten Einzelchunk
+  (Singleton-Schutz); ist die Belegabdeckung gesättigt und Budget übrig, gilt
+  der Zusatzterm `f₂` mit δ = 0,05.
+- **M10 (neu)** Der Greedy-Index ist **kein** Vollindex. Deshalb bleiben M7
+  (Lückenchunks) und K3 (kein Textverlust) bestehen — als Zutat von ArbiterRAG,
+  nicht als Teil des Papiers.
+- **L4 (neu)** Ein Abschnitt bleibt ganz, solange sein Text höchstens
+  1,5 × `chunk_chars` Zeichen hat. Erst darüber wird er an Absatzgrenzen, dann
+  an Satzgrenzen gepackt, mit Überlappung `chunk_overlap`.
+- **L5 (neu)** Breadcrumb `[<Datei> > <Kapitel> > <Abschnitt>]`, Trenner ` > `.
+- **L6 (neu)** Höchstens 3 Verweise je Chunk, je 200 Zeichen des Ziel-Rumpfes.
+
+#### Geänderte Konfiguration
+
+| Schlüssel | Default | Änderung |
+|---|---|---|
+| `qes_budget_faktor` | 3.0 | war 1.35 (Blog) |
+| `xref_max` | 3 | war 2 |
+| `xref_chars` | 200 | war 320 |
+| `qe_fragen_max` | 60 | neu (D30) |
+| `qe_hits` | 5 | neu: κ des Hit-Gates |
+| `qes_lambda` | 0.0001 | neu: Gewicht des Strukturterms |
+
+`qes_budget_faktor` zählt Zeichen, das Papier Blöcke. Bei Sätzen als Blöcken ist
+das Verhältnis nahezu gleich; die Abweichung steht im Bericht.
+
+**Status:** Revision 2026-11-08 nach Lesen beider Papiere. Wartet auf Freigabe
+der Abschnitte 11.1–11.9 und der Entscheidungen D20–D31.

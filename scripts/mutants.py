@@ -101,8 +101,8 @@ MUTANTS = [
     Mutant(
         "chunks-lose-the-document-header",
         "src/arbiter/pipeline.py",
-        'kopf = f"[{Path(document.quelle).stem}, S. {page}] "',
-        'kopf = ""',
+        'kennung = f"[{Path(quelle).stem}, S. {seite or 0}"',
+        'kennung = f""',
     ),
     Mutant(
         "duplicate-detection-off",
@@ -115,6 +115,72 @@ MUTANTS = [
         "src/arbiter/pipeline.py",
         "            if p >= self.rag.gate_schwelle:",
         "            if True:",
+    ),
+    Mutant(
+        "struktur-verweis-laenge-ignoriert",
+        "src/arbiter/chunk_structure.py",
+        "[:xref_chars].strip()",
+        "[:].strip()",
+    ),
+    Mutant(
+        "struktur-abschnittsgrenze-aufgehoben",
+        "src/arbiter/chunk_structure.py",
+        "        ende = koepfe[index + 1][0] if index + 1 < len(koepfe) else len(text)",
+        "        ende = len(text)",
+    ),
+    Mutant(
+        "struktur-haengt-verweis-auf-sich-an",
+        "src/arbiter/chunk_structure.py",
+        "        if not nummer or nummer == teil.nummer or nummer in gesehen:",
+        "        if not nummer or nummer in gesehen:",
+    ),
+    Mutant(
+        "entscheider-schwelle-ignoriert",
+        "src/arbiter/chunk_choice.py",
+        '        strategie="struktur" if punktzahl >= schwelle else "qes",',
+        '        strategie="struktur",',
+    ),
+    Mutant(
+        "entscheider-zaehlt-riesenabschnitte",
+        "src/arbiter/chunk_structure.py",
+        "        if teil.ebene >= ebene and teil.ende - teil.start <= max_chars * 1.5",
+        "        if teil.ebene >= ebene",
+    ),
+    Mutant(
+        "entscheider-ignoriert-die-uebersteuerung",
+        "src/arbiter/chunk.py",
+        '    if strategie == "auto":',
+        "    if True:",
+    ),
+    Mutant(
+        "fenster-chunk-verliert-seine-position",
+        "src/arbiter/chunk.py",
+        "                    start=links,\n                    ende=rechts,",
+        "                    start=start,\n                    ende=rechts,",
+    ),
+    Mutant(
+        "seitenzuordnung-immer-seite-eins",
+        "src/arbiter/pipeline.py",
+        "    return bisect_right(list(anfaenge), position)",
+        "    return 1",
+    ),
+    Mutant(
+        "seitenbereich-ignoriert-das-ende",
+        "src/arbiter/store.py",
+        "    return start <= seite <= max(start, ende)",
+        "    return start == seite",
+    ),
+    Mutant(
+        "strategie-fehlt-in-der-zeile",
+        "src/arbiter/store.py",
+        '        "strategie": record.strategie,',
+        '        "strategie": "",',
+    ),
+    Mutant(
+        "fingerabdruck-ignoriert-die-strategie",
+        "src/arbiter/pipeline.py",
+        "                rag.chunk_strategie,",
+        '                "",',
     ),
 ]
 

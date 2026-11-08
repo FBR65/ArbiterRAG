@@ -7,6 +7,7 @@ Indexing, search, the gate and the answer step live here; each one is a method o
 from __future__ import annotations
 
 import hashlib
+from bisect import bisect_right
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -14,7 +15,8 @@ from pathlib import Path
 from arbiter.answer import KEINE_ANTWORT, Quelle, build_answer_prompt
 from arbiter.chat import ChatClient
 from arbiter.check import build_claim_prompt, build_repair_prompt, ist_meta, split_claims
-from arbiter.chunk import chunk_text
+from arbiter.chunk import ChunkParameter, QePaar, chunk_datei
+from arbiter.chunk_structure import Kennzahlen
 from arbiter.config import Config, Rag
 from arbiter.decision import (
     GATE_GRAMMATIK,
@@ -24,7 +26,7 @@ from arbiter.decision import (
 )
 from arbiter.embedding import HttpEmbedder
 from arbiter.fusion import rrf_many
-from arbiter.loaders import OcrHook, OcrPage, load_corpus
+from arbiter.loaders import Document, OcrHook, OcrPage, load_corpus
 from arbiter.ocr import VisionOcr, dots_to_text, render_png, word_overlap
 from arbiter.rerank import RerankClient
 from arbiter.store import Hit, Record, Store
@@ -39,6 +41,52 @@ class QuestionTooLong(Exception):
     """Question exceeds the configured limit (spec I3)."""
 
 
+def verkette_seiten(seiten: Sequence[str]) -> tuple[str, list[int]]:
+    """Concatenate the pages of one file and keep the start position of each (spec O1)."""
+    text = ""
+    anfaenge: list[int] = []
+    for seite in seiten:
+        anfaenge.append(len(text))
+        text += seite + "\n"
+    return text.rstrip("\n"), anfaenge
+
+
+def seite_bei(anfaenge: Sequence[int], position: int) -> int:
+    """1-based page number of a character position (spec O2)."""
+    return bisect_right(list(anfaenge), position)
+
+
+def _nach_datei(dokumente: Sequence[Document]) -> dict[str, list[Document]]:
+    """Documents grouped by file, pages in reading order."""
+    nach_datei: dict[str, list[Document]] = {}
+    for dokument in dokumente:
+        nach_datei.setdefault(dokument.quelle, []).append(dokument)
+    return {
+        quelle: sorted(seiten, key=lambda teil: teil.seite or 0)
+        for quelle, seiten in nach_datei.items()
+    }
+
+
+def _kopf(quelle: str, seite: int | None, pfad: tuple[str, ...]) -> str:
+    """Chunk header: file, page and — for structure chunks — the heading path (B6, L5)."""
+    kennung = f"[{Path(quelle).stem}, S. {seite or 0}"
+    if pfad:
+        kennung += " > " + " > ".join(pfad)
+    return kennung + "] "
+
+
+@dataclass(frozen=True)
+class DateiBericht:
+    """What the decider chose for one file (spec N4)."""
+
+    quelle: str
+    strategie: str
+    uebersteuert: bool
+    wert: float | None
+    kennzahlen: Kennzahlen | None
+    chunks: int
+
+
 @dataclass
 class IndexReport:
     files: int = 0
@@ -51,6 +99,7 @@ class IndexReport:
     unchanged: int = 0
     entfernt: int = 0
     warnings: list[str] = field(default_factory=list)
+    dateien: list[DateiBericht] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -152,45 +201,58 @@ class Pipeline:
 
         records: list[Record] = []
         texts: list[str] = []
-        for document in loaded.documents:
-            page = document.seite or 0
-            kopf = f"[{Path(document.quelle).stem}, S. {page}] "
-            for number, text in enumerate(
-                chunk_text(document.text, self.rag.chunk_chars, self.rag.chunk_overlap),
-                start=1,
-            ):
-                chunk_id = f"{document.quelle}#{page}#{number}"
-                inhalt = kopf + text
+        for quelle, seiten in _nach_datei(loaded.documents).items():
+            text, anfaenge = verkette_seiten([seite.text for seite in seiten])
+            ergebnis = chunk_datei(
+                text,
+                quelle,
+                self._chunk_parameter(),
+                qe_quelle=self._qe_quelle(),
+                embedder=self.embedder,
+            )
+            report.warnings.extend(ergebnis.warnungen)
+            datei = DateiBericht(
+                quelle=quelle,
+                strategie=ergebnis.strategie,
+                uebersteuert=ergebnis.auswahl is None,
+                wert=ergebnis.auswahl.wert if ergebnis.auswahl else None,
+                kennzahlen=ergebnis.auswahl.kennzahlen if ergebnis.auswahl else None,
+                chunks=len(ergebnis.chunks),
+            )
+            report.dateien.append(datei)
+            for number, chunk in enumerate(ergebnis.chunks, start=1):
+                seite = seite_bei(anfaenge, chunk.start)
+                seite_ende = seite_bei(anfaenge, max(chunk.ende - 1, chunk.start))
+                quelle_seite = seiten[seite - 1]
+                kopf = _kopf(quelle, quelle_seite.seite, chunk.pfad)
+                inhalt = kopf + chunk.text
+                eltern = (
+                    " ".join(teil.text for teil in seiten[seite - 1 : seite_ende])
+                    if self.rag.eltern_seite
+                    else inhalt
+                )
+                chunk_id = f"{quelle}#{quelle_seite.seite or 0}#{number}"
                 records.append(
                     Record(
                         id=chunk_id,
                         text=inhalt,
-                        quelle=document.quelle,
-                        seite=document.seite,
+                        quelle=quelle,
+                        seite=quelle_seite.seite,
+                        seite_ende=seite_ende if quelle_seite.seite else None,
                         hash=hashlib.sha256(inhalt.encode("utf-8")).hexdigest(),
                         vector=[],
-                        ocr=document.ocr,
-                        ocr_paddle=document.ocr_paddle,
-                        ocr_ueberlappung=document.ocr_ueberlappung,
-                        eltern=document.text if self.rag.eltern_seite else inhalt,
+                        ocr=quelle_seite.ocr,
+                        ocr_paddle=quelle_seite.ocr_paddle,
+                        ocr_ueberlappung=quelle_seite.ocr_ueberlappung,
+                        eltern=eltern,
+                        strategie=ergebnis.strategie,
                     )
                 )
                 texts.append(inhalt)
 
         vectors = self._embed_all(texts)
         filled = [
-            Record(
-                id=record.id,
-                text=record.text,
-                quelle=record.quelle,
-                seite=record.seite,
-                hash=record.hash,
-                vector=vector,
-                ocr=record.ocr,
-                ocr_paddle=record.ocr_paddle,
-                ocr_ueberlappung=record.ocr_ueberlappung,
-            )
-            for record, vector in zip(records, vectors, strict=True)
+            replace(record, vector=vector) for record, vector in zip(records, vectors, strict=True)
         ]
 
         report.chunks = len(filled)
@@ -534,6 +596,27 @@ class Pipeline:
             self.reranker = client.scores
         return self.reranker(question, documents)
 
+    def _chunk_parameter(self) -> ChunkParameter:
+        """The chunking settings of this corpus (spec 11.4)."""
+        rag = self.rag
+        return ChunkParameter(
+            strategie=rag.chunk_strategie,
+            max_chars=rag.chunk_chars,
+            overlap=rag.chunk_overlap,
+            ebene=rag.struktur_ebene,
+            schwelle=rag.struktur_schwelle,
+            xref_max=rag.xref_max,
+            xref_chars=rag.xref_chars,
+            qes_budget_faktor=rag.qes_budget_faktor,
+            qe_fragen_max=rag.qe_fragen_max,
+            qe_hits=rag.qe_hits,
+            qes_lambda=rag.qes_lambda,
+        )
+
+    def _qe_quelle(self) -> Callable[[str], list[QePaar]] | None:
+        """Question-evidence generation for the QES strategy (spec M3, stage 7.2)."""
+        return None
+
     def _ingest_einstellungen(self) -> str:
         """Everything that changes the text of a file, as one string.
 
@@ -546,6 +629,16 @@ class Pipeline:
             for wert in (
                 rag.chunk_chars,
                 rag.chunk_overlap,
+                rag.chunk_strategie,
+                rag.struktur_ebene,
+                rag.struktur_schwelle,
+                rag.xref_max,
+                rag.xref_chars,
+                rag.qes_budget_faktor,
+                rag.qe_fragen_max,
+                rag.qe_hits,
+                rag.qes_lambda,
+                rag.qe_model,
                 rag.ocr,
                 rag.ocr_alle_seiten,
                 rag.ocr_dpi,

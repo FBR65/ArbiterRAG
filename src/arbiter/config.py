@@ -58,6 +58,16 @@ class Rag:
     antwort_pruefung: bool = False
     antwort_schwelle: float = 0.5
     antwort_reparatur: bool = False
+    chunk_strategie: str = "auto"
+    struktur_ebene: int = 2
+    struktur_schwelle: float = 0.6
+    xref_max: int = 3
+    xref_chars: int = 200
+    qes_budget_faktor: float = 3.0
+    qe_fragen_max: int = 60
+    qe_hits: int = 5
+    qes_lambda: float = 0.0001
+    qe_model: str = ""
 
 
 @dataclass(frozen=True)
@@ -101,6 +111,16 @@ _RAG_KEYS = {
     "antwort_pruefung",
     "antwort_schwelle",
     "antwort_reparatur",
+    "chunk_strategie",
+    "struktur_ebene",
+    "struktur_schwelle",
+    "xref_max",
+    "xref_chars",
+    "qes_budget_faktor",
+    "qe_fragen_max",
+    "qe_hits",
+    "qes_lambda",
+    "qe_model",
 }
 _REQUIRED_BACKENDS = {
     "base_url",
@@ -215,6 +235,16 @@ def _rag(name: str, entry: Any, filename: str) -> Rag:
         antwort_pruefung=bool(entry.get("antwort_pruefung", False)),
         antwort_schwelle=float(entry.get("antwort_schwelle", 0.5)),
         antwort_reparatur=bool(entry.get("antwort_reparatur", False)),
+        chunk_strategie=str(entry.get("chunk_strategie", "auto")),
+        struktur_ebene=int(entry.get("struktur_ebene", 2)),
+        struktur_schwelle=float(entry.get("struktur_schwelle", 0.6)),
+        xref_max=int(entry.get("xref_max", 3)),
+        xref_chars=int(entry.get("xref_chars", 200)),
+        qes_budget_faktor=float(entry.get("qes_budget_faktor", 3.0)),
+        qe_fragen_max=int(entry.get("qe_fragen_max", 60)),
+        qe_hits=int(entry.get("qe_hits", 5)),
+        qes_lambda=float(entry.get("qes_lambda", 0.0001)),
+        qe_model=str(entry.get("qe_model", "")),
     )
 
 

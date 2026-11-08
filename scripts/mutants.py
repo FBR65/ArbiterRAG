@@ -207,8 +207,8 @@ MUTANTS = [
     Mutant(
         "qes-fensterlaenge-ueber-dem-limit",
         "src/arbiter/chunk_qes.py",
-        "        return kurz, min(lang, max_chars)",
-        "        return kurz, lang",
+        "        return min(kurz, lang), lang",
+        "        return kurz, laengen[-1]",
     ),
     Mutant(
         "qe-obergrenze-ignoriert",

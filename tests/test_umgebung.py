@@ -16,6 +16,7 @@ def test_values_come_from_the_file(tmp_path: Path, monkeypatch) -> None:
     )
     monkeypatch.delenv("ARBITER_DB", raising=False)
     monkeypatch.delenv("ARBITER_BASE_URL", raising=False)
+    monkeypatch.delenv("ARBITER_CONFIG", raising=False)
     monkeypatch.setenv("ARBITER_ENV", str(env_datei))
 
     umgebung = lade_umgebung()

@@ -15,7 +15,9 @@ KEINE_ANTWORT = "KEINE_ANTWORT"
 SYSTEM = (
     "Du beantwortest die Frage ausschließlich aus den gegebenen Auszügen. "
     "Jede Aussage trägt die Quelle in eckigen Klammern, zum Beispiel [a.pdf, S. 4]. "
-    f"Beantworten die Auszüge die Frage nicht, gib nur das Wort {KEINE_ANTWORT} aus. "
+    "Beantworten die Auszüge die Frage nur zum Teil, antworte mit dem, was sie hergeben, "
+    "und nenne die Lücke nicht. "
+    f"Nur wenn die Auszüge nichts zur Frage enthalten, gib allein das Wort {KEINE_ANTWORT} aus. "
     "Schreibe keinen Satz über die Auszüge selbst, keine Vorrede, keine Anmerkung zur "
     "eigenen Antwort und keine Erklärung, was fehlt. Erfinde keine Zahlen und keine Quellen."
 )

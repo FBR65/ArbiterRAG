@@ -419,13 +419,8 @@ class Pipeline:
             )
 
         if KEINE_ANTWORT.casefold() in text.casefold():
-            return Antwort(
-                text=None,
-                grund="Die Auszüge beantworten die Frage nicht",
-                quellen=quellen,
-                entscheidung=entscheidung,
-                fehler=False,
-                warnungen=entscheidung.warnungen,
+            return self._ohne_antwort(
+                "Die Auszüge beantworten die Frage nicht", quellen, entscheidung
             )
 
         zusatz: list[str] = []
@@ -443,14 +438,7 @@ class Pipeline:
             else:
                 # The gate could not decide and no sentence was supported. Answering
                 # anyway would mean answering from a passage nobody vouched for.
-                return Antwort(
-                    text=None,
-                    grund="keine belegte Passage",
-                    quellen=quellen,
-                    entscheidung=entscheidung,
-                    fehler=False,
-                    warnungen=[*entscheidung.warnungen, *zusatz],
-                )
+                return self._ohne_antwort("keine belegte Passage", quellen, entscheidung, zusatz)
 
         return Antwort(
             text=text,
@@ -459,6 +447,34 @@ class Pipeline:
             entscheidung=entscheidung,
             fehler=False,
             warnungen=[*entscheidung.warnungen, *zusatz],
+        )
+
+    def _ohne_antwort(
+        self,
+        grund: str,
+        quellen: list[Quelle],
+        entscheidung: Entscheidung,
+        zusatz: list[str] | None = None,
+    ) -> Antwort:
+        """A refusal carries no sources.
+
+        Listing the checked pages next to "no answer" reads like an answer with its
+        sources. The pages are named in the warnings instead, as what they are: checked
+        and found insufficient.
+        """
+        geprueft = ", ".join(f"{quelle.quelle}, S. {quelle.seite}" for quelle in quellen[:5])
+        warnungen = list(entscheidung.warnungen)
+        if zusatz:
+            warnungen.extend(zusatz)
+        if geprueft:
+            warnungen.append(f"geprüft, nicht ausreichend: {geprueft}")
+        return Antwort(
+            text=None,
+            grund=grund,
+            quellen=[],
+            entscheidung=entscheidung,
+            fehler=False,
+            warnungen=warnungen,
         )
 
     def _zitat(self, quellen: list[Quelle]) -> str:
@@ -477,6 +493,12 @@ class Pipeline:
         """
         nach_quelle = {(quelle.quelle, quelle.seite): quelle.text for quelle in quellen}
         alle = [quelle.text for quelle in quellen]
+        for beleg in quellen:
+            if beleg.seite is None:
+                continue
+            volltext = self.store.page_text(self.rag.name, beleg.quelle, beleg.seite)
+            if volltext and volltext not in alle:
+                alle.append(volltext)
         behalten: list[str] = []
         verworfen: list[str] = []
         for satz, quelle, seite in split_claims(text):
@@ -491,6 +513,9 @@ class Pipeline:
                     for (datei, nummer), auszug in nach_quelle.items()
                     if quelle in datei and nummer == seite
                 ]
+                ganze_seite = self.store.page_text(self.rag.name, quelle, seite)
+                if ganze_seite:
+                    kandidaten.append(ganze_seite)
                 if not kandidaten:
                     verworfen.append(satz)
                     continue

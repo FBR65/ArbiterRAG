@@ -410,6 +410,33 @@ Der Fehler ist weg, und keine Antwort nennt mehr eine falsche Quelle — dafür 
 Antworten weniger und drei Zitate mehr: das Modell formuliert vorsichtiger. Für das Ziel
 „keine Halluzination" ist das der richtige Tausch, für die Abdeckung nicht.
 
+## L — Abdeckung und zwei Fehler aus der TUI
+
+**Fehler 1: Verweigerung mit Quellen.** Eine Antwort ohne Text listete trotzdem drei
+Seiten — das liest sich wie eine Antwort mit Belegen. Jetzt tragen Verweigerungen
+**keine** Quellen mehr; die geprüften Seiten stehen als „geprüft, nicht ausreichend"
+in den Warnungen.
+
+**Fehler 2: Frage ohne Text.** „Was sind die typischen Schwachstellen?" ergab
+`KEINE_ANTWORT`, obwohl drei Seiten zugelassen waren. Nachgemessen: die Satzprüfung
+gibt p = 1,0, das **Antwortmodell** verweigert. Ursache war mein Prompt: „ausschließlich
+aus den Auszügen" plus „alles oder nichts". Jetzt gilt: teilweise beantwortbar heißt
+teilweise antworten. Dieselbe Frage liefert danach eine Liste mit Quellen.
+
+**Woran die übrigen Verweigerungen liegen** (21 Fragen, je Frage ein Grund):
+
+| Grund | Anzahl | Ursache |
+|---|---|---|
+| Antwort | 10 | — |
+| keine belegte Passage | 7 | **Gate** — Passage abgelehnt (überwiegend richtig: nicht beantwortbare Fragen) |
+| Die Auszüge beantworten die Frage nicht | 4 | Antwortmodell verweigert |
+
+Die Satzprüfung ist **nicht** das Nadelöhr — ich hatte das falsch vermutet.
+
+**Kette nach beiden Änderungen** (HyDE aus): 11 Antworten, 10 mit richtigem Beleg,
+1 ohne, 10 Zitate. Bei 12 beantwortbaren Fragen bleiben damit zwei offen; sie
+scheitern an der Suche, nicht am Prompt.
+
 ## Endstand der Kette
 
 | Stufe | Recall@10 | nDCG@10 | Beleg ok (von 23) |

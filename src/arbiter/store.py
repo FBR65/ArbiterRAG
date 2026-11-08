@@ -221,6 +221,39 @@ class Store:
         table.delete(f"quelle = '{quelle.replace(chr(39), chr(39) * 2)}'")
         table.add([{"quelle": quelle, "fingerabdruck": fingerabdruck}])
 
+    def page_text(self, rag: str, quelle: str, seite: int) -> str:
+        """All chunks of one page as one text.
+
+        The sentence check compares an answer sentence with the page it cites, not with
+        the 600-character window that happened to be retrieved: the statement may stand
+        two sentences further on the same page.
+        """
+        table = self._table(rag)
+        sicher = quelle.replace("'", "''")
+        try:
+            rows = (
+                table.search()
+                .where(f"quelle = '{sicher}' AND seite = {int(seite)}")
+                .select(["text"])
+                .limit(1000)
+                .to_list()
+            )
+        except Exception:
+            return ""
+        if not rows:
+            # Textdateien haben keine Seitenzahl; dann gilt das ganze Dokument.
+            try:
+                rows = (
+                    table.search()
+                    .where(f"quelle = '{sicher}'")
+                    .select(["text"])
+                    .limit(1000)
+                    .to_list()
+                )
+            except Exception:
+                return ""
+        return " ".join(str(row["text"]) for row in rows)
+
     def _table_or_create(self, rag: str, dim: int) -> Any:
         try:
             table = self._db.open_table(rag)

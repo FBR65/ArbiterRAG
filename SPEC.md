@@ -468,6 +468,12 @@ beginnt kein Code.
 - **M2** Ein Frage-Beleg-Paar ist eine Frage plus ein bis drei Belegstellen. Eine
   Belegstelle ist ein Satz, der nach Leerraum-Normalisierung wörtlich im Dokument
   steht. Ein Paar mit einer nicht wörtlichen Belegstelle wird verworfen.
+  *Präzisiert 2026-11-08 nach einem echten Lauf:* Ein Beleg darf auch ein **Teil**
+  eines Satzes sein, wenn er wörtlich im Dokument steht und mindestens 20 Zeichen
+  lang ist; er wird dann dem Satz zugeordnet, der ihn enthält. Grund: Das Modell
+  zitierte im echten Lauf 0 von 12 Belegen als ganzen Satz, aber 12 von 12 als
+  wörtliches Fragment. Umgangssprachliche oder gekürzte Fassungen ohne wörtlichen
+  Wortlaut bleiben verworfen.
 - **M3** Erzeugung durch das Chat-Modell (`qe_model`, leer = `chat_model`), ein
   Aufruf je Fenster von `qe_fenster` Zeichen (Default 6000), höchstens
   `qe_fenster_max` Fenster (Default 4) je Datei, höchstens `qe_fragen` Fragen

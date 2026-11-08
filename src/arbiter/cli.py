@@ -17,7 +17,7 @@ from arbiter.config import Config, ConfigError, Rag, load_config
 from arbiter.embedding import EmbeddingError, HttpEmbedder
 from arbiter.eval import format_table, load_goldset, run
 from arbiter.output import antwort_json
-from arbiter.pipeline import DateiBericht, Pipeline, QuestionTooLong
+from arbiter.pipeline import DateiBericht, Pipeline, QuestionTooLong, neuer_pipeline
 from arbiter.store import StoreError
 
 EXIT_OK = 0
@@ -57,7 +57,7 @@ def main(
     def build() -> Pipeline:
         if factory is not None:
             return factory(cfg, rag)
-        return Pipeline(cfg, rag, embedder=embedder)
+        return neuer_pipeline(cfg, rag, embedder=embedder)
 
     try:
         if args.command == "index":

@@ -65,6 +65,8 @@ class Rag:
     xref_chars: int = 200
     qes_budget_faktor: float = 3.0
     qe_fragen_max: int = 60
+    qe_fenster: int = 6000
+    qe_fenster_max: int = 4
     qe_hits: int = 5
     qes_lambda: float = 0.0001
     qe_model: str = ""
@@ -118,6 +120,8 @@ _RAG_KEYS = {
     "xref_chars",
     "qes_budget_faktor",
     "qe_fragen_max",
+    "qe_fenster",
+    "qe_fenster_max",
     "qe_hits",
     "qes_lambda",
     "qe_model",
@@ -242,6 +246,8 @@ def _rag(name: str, entry: Any, filename: str) -> Rag:
         xref_chars=int(entry.get("xref_chars", 200)),
         qes_budget_faktor=float(entry.get("qes_budget_faktor", 3.0)),
         qe_fragen_max=int(entry.get("qe_fragen_max", 60)),
+        qe_fenster=int(entry.get("qe_fenster", 6000)),
+        qe_fenster_max=int(entry.get("qe_fenster_max", 4)),
         qe_hits=int(entry.get("qe_hits", 5)),
         qes_lambda=float(entry.get("qes_lambda", 0.0001)),
         qe_model=str(entry.get("qe_model", "")),

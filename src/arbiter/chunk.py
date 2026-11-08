@@ -12,7 +12,7 @@ import itertools
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from arbiter.chunk_choice import Auswahl
@@ -48,6 +48,12 @@ class QePaar:
 
 
 QeQuelle = Callable[[str], list[QePaar]]
+
+
+class EmbedderLike(Protocol):
+    """The only part of the embedder the chunkers use."""
+
+    def embed(self, texts: list[str]) -> list[list[float]]: ...
 
 
 @dataclass(frozen=True)
@@ -148,7 +154,7 @@ def chunk_datei(
     parameter: ChunkParameter,
     *,
     qe_quelle: QeQuelle | None = None,
-    embedder: object | None = None,
+    embedder: EmbedderLike | None = None,
 ) -> Ergebnis:
     """Chunk one whole document (spec K, N5)."""
     if parameter.strategie not in STRATEGIEN:
@@ -213,7 +219,7 @@ def _qes_chunks(
     dateiname: str,
     parameter: ChunkParameter,
     qe_quelle: QeQuelle | None,
-    embedder: object | None,
+    embedder: EmbedderLike | None,
     warnungen: list[str],
 ) -> list[Chunk] | None:
     """QES chunks, or ``None`` when the supervision is missing (spec M8)."""

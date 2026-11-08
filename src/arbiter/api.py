@@ -22,7 +22,7 @@ from arbiter import __version__
 from arbiter.config import Config, ConfigError, Rag, load_config
 from arbiter.embedding import EmbeddingError
 from arbiter.output import antwort_json, suchergebnis_json
-from arbiter.pipeline import IndexReport, Pipeline, QuestionTooLong
+from arbiter.pipeline import IndexReport, Pipeline, QuestionTooLong, neuer_pipeline
 from arbiter.store import StoreError
 
 EXIT_CONFIG = 1
@@ -64,7 +64,7 @@ def create_app(
             raise HTTPException(
                 status_code=404, detail=f"Unbekannter RAG '{rag_name}'. Bekannt: {known}"
             )
-        return factory(cfg, rag) if factory else Pipeline(cfg, rag)
+        return factory(cfg, rag) if factory else neuer_pipeline(cfg, rag)
 
     def run_job(job_id: str, rag_name: str) -> None:
         try:

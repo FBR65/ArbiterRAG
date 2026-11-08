@@ -146,6 +146,25 @@ class SearchResult:
     warnungen: list[str] = field(default_factory=list)
 
 
+def neuer_pipeline(config: Config, rag: Rag, embedder: HttpEmbedder | None = None) -> Pipeline:
+    """A pipeline that can do everything, including question-evidence generation.
+
+    Unit tests build ``Pipeline`` directly and get no generator, so indexing never
+    calls a model there (N5). The three front ends use this constructor instead.
+    """
+    from arbiter.chunk_qe import mache_qe_quelle
+
+    pipeline = Pipeline(config, rag, embedder=embedder)
+    pipeline.qe_quelle = mache_qe_quelle(
+        base_url=config.backends.base_url,
+        model=rag.qe_model or config.backends.chat_model,
+        max_fragen=rag.qe_fragen_max,
+        fenster=rag.qe_fenster,
+        fenster_max=rag.qe_fenster_max,
+    )
+    return pipeline
+
+
 class Pipeline:
     """One RAG corpus, one store table, one embedder."""
 
@@ -154,6 +173,7 @@ class Pipeline:
         config: Config,
         rag: Rag,
         embedder: HttpEmbedder | None = None,
+        qe_quelle: Callable[[str], list[QePaar]] | None = None,
     ) -> None:
         self.config = config
         self.rag = rag
@@ -168,6 +188,10 @@ class Pipeline:
         # Callable(state, questions) -> answers map; and Callable(system, user) -> text.
         self.answerer: Callable[[str, str], str] | None = None
         self.gate_logprobs: Callable[[str, str], dict[str, float]] | None = None
+        # Question-evidence generation for the QES strategy (spec M3). Left empty here so
+        # indexing never calls a model unless someone asked for it; ``neuer_pipeline``
+        # wires the real generator for CLI, TUI and API.
+        self.qe_quelle = qe_quelle
 
     def index(self) -> IndexReport:
         # The check comes first: an unchanged file is not read again, so OCR and
@@ -614,8 +638,8 @@ class Pipeline:
         )
 
     def _qe_quelle(self) -> Callable[[str], list[QePaar]] | None:
-        """Question-evidence generation for the QES strategy (spec M3, stage 7.2)."""
-        return None
+        """Question-evidence generation for the QES strategy (spec M3)."""
+        return self.qe_quelle
 
     def _ingest_einstellungen(self) -> str:
         """Everything that changes the text of a file, as one string.

@@ -182,6 +182,55 @@ MUTANTS = [
         "                rag.chunk_strategie,",
         '                "",',
     ),
+    Mutant(
+        "qes-hit-gate-abgeschaltet",
+        "src/arbiter/chunk_qes.py",
+        "        if not any(fenster.erster <= block <= fenster.letzter\n"
+        "                for block in treffer[nummer]):\n            continue",
+        "        if False:\n            continue",
+    ),
+    Mutant(
+        "qes-singleton-schutz-aus",
+        "src/arbiter/chunk_qes.py",
+        "    if bester_einzelner is not None and gesamt([bester_einzelner]) > gesamt(gewaehlt):",
+        "    if False:",
+    ),
+    Mutant(
+        "qes-nimmt-mehrdeutige-fragmente",
+        "src/arbiter/chunk_qes.py",
+        "    if len(treffer) == 1:",
+        "    if treffer:",
+    ),
+    Mutant(
+        "qes-laesst-luecken",
+        "src/arbiter/chunk_qes.py",
+        "        spannen_auswahl.extend(_teile(start, ende, max_chars))",
+        "        spannen_auswahl.extend([])",
+    ),
+    Mutant(
+        "qes-fensterlaenge-ueber-dem-limit",
+        "src/arbiter/chunk_qes.py",
+        "        return kurz, min(lang, max_chars)",
+        "        return kurz, lang",
+    ),
+    Mutant(
+        "qe-obergrenze-ignoriert",
+        "src/arbiter/chunk_qe.py",
+        "            if len(paare) >= max_fragen:",
+        "            if False:",
+    ),
+    Mutant(
+        "qe-doppelte-fragen-bleiben",
+        "src/arbiter/chunk_qe.py",
+        "            if paar.frage in gesehen:\n                continue",
+        "            if False:\n                continue",
+    ),
+    Mutant(
+        "qe-nimmt-nicht-woertliche-belege",
+        "src/arbiter/chunk_qe.py",
+        "            if not all(_steht_im_text(beleg, saetze) for beleg in paar.belege):",
+        "            if False:",
+    ),
 ]
 
 

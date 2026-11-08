@@ -126,6 +126,21 @@ def test_seitenuebergreifender_chunk_wird_auf_beiden_seiten_gefunden(tmp_path: P
     assert nur_seite_eins not in store.page_text("k", "a.pdf", 4)
 
 
+def test_eingespeiste_qe_quelle_ergibt_qes_zeilen(tmp_path: Path) -> None:
+    from arbiter.chunk import QePaar
+
+    pipeline = _pipeline(
+        tmp_path,
+        "Der Hund bellt im Hof. Das Tor oeffnet um 17:00. Es schliesst um 22:00.",
+    )
+    pipeline.qe_quelle = lambda _text: [
+        QePaar(frage="Wann oeffnet das Tor?", belege=("Das Tor oeffnet um 17:00.",))
+    ]
+    report = pipeline.index()
+    assert report.dateien[0].strategie == "qes"
+    assert all(datei.strategie == "qes" for datei in report.dateien)
+
+
 def test_strategie_wechsel_liest_die_datei_neu(tmp_path: Path) -> None:
     _pipeline(tmp_path).index()
     zweiter = _pipeline(tmp_path, chunk_strategie="fenster").index()

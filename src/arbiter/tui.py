@@ -24,7 +24,7 @@ from textual.binding import Binding, BindingType
 from textual.containers import Vertical, VerticalScroll
 from textual.widgets import Footer, Header, Input, Label, Static
 
-from arbiter.pipeline import Antwort, Pipeline, SearchResult
+from arbiter.pipeline import Antwort, Pipeline, SearchResult, neuer_pipeline
 
 
 @dataclass(frozen=True)
@@ -221,7 +221,7 @@ def main() -> None:
     umgebung = lade_umgebung()
     cfg = load_config(Path(umgebung.get("ARBITER_CONFIG", "arbiter.yaml")), umgebung)
     name = umgebung.get("ARBITER_RAG") or next(iter(cfg.rags))
-    ArbiterTui(Pipeline(cfg, cfg.rags[name])).run()
+    ArbiterTui(neuer_pipeline(cfg, cfg.rags[name])).run()
 
 
 if __name__ == "__main__":

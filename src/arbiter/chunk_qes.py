@@ -116,8 +116,10 @@ def laengen_bereich(text: str, max_chars: int) -> tuple[int, int]:
     if len(absaetze) >= 4:
         laengen = sorted(len(teil.strip()) for teil in absaetze)
         kurz = max(1, laengen[int(0.10 * (len(laengen) - 1))])
-        lang = max(kurz + 1, laengen[int(0.90 * (len(laengen) - 1))])
-        return kurz, min(lang, max_chars)
+        lang = min(max(kurz + 1, laengen[int(0.90 * (len(laengen) - 1))]), max_chars)
+        # A paragraph longer than the window gives a lower bound above the upper bound;
+        # then the window limit wins, otherwise no candidate would exist at all (K5).
+        return min(kurz, lang), lang
     return max(1, max_chars // 2), max_chars
 
 

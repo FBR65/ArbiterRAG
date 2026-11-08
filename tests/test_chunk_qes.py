@@ -119,10 +119,13 @@ def test_qes_laesst_ueberlappung_zu() -> None:
 def test_lange_absaetze_halten_das_fensterlimit_ein() -> None:
     # Lange Absaetze: das 90. Perzentil liegt ueber chunk_chars. Die Fensterlaenge darf
     # trotzdem nicht ueber das Limit wachsen (K5).
-    text = "\n\n".join("Ein Satz mit Inhalt. " * 25 for _ in range(5))
+    text = "\n\n".join(
+        " ".join(f"Absatz {absatz} Satz {satz} mit Inhalt." for satz in range(25))
+        for absatz in range(5)
+    )
     chunks = chunke_qes(
         text,
-        [QePaar(frage="a?", belege=("Ein Satz mit Inhalt.",))],
+        [QePaar(frage="a?", belege=("Absatz 0 Satz 3 mit Inhalt.",))],
         parameter=ChunkParameter(strategie="qes", max_chars=200),
         embedder=WortEmbedder(),
     )

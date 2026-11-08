@@ -41,6 +41,15 @@ def _normal(text: str) -> str:
 
 
 MIN_BELEG = 10
+# llama-server brach im echten Lauf mit "input (591 tokens) is too large to process" ab:
+# ein Satz ohne Satzende kann eine ganze Seite sein. Für die Aehnlichkeit zaehlt der
+# Anfang; der Chunk selbst behaelt den vollen Text.
+EMBED_MAX_ZEICHEN = 1200
+
+
+def einbettungstext(satz: str) -> str:
+    """The part of a sentence that goes to the embedder (bounded input length)."""
+    return satz if len(satz) <= EMBED_MAX_ZEICHEN else satz[:EMBED_MAX_ZEICHEN]
 
 
 def beleg_bloecke(beleg: str, saetze: list[str]) -> tuple[int, ...] | None:
@@ -141,18 +150,16 @@ def chunke_qes(
         return []
 
     fragen = [paare[nummer].frage for nummer, _ in belege]
-    satz_vektoren = embedder.embed(saetze)
-    frage_vektoren = embedder.embed(fragen)
+    satz_vektoren = embedder.embed([einbettungstext(satz) for satz in saetze])
+    frage_vektoren = embedder.embed([einbettungstext(frage) for frage in fragen])
     treffer = [
         treffer_indizes(satz_vektoren, vektor, parameter.qe_hits) for vektor in frage_vektoren
     ]
 
     kurz, lang = laengen_bereich(text, parameter.max_chars)
     kandidaten = _kandidaten(spannen, kurz, lang)
-    if not kandidaten:
-        return []
-
-    gewaehlt = _greedy(text, spannen, kandidaten, belege, treffer, parameter)
+    # Ohne passendes Fenster bleibt der Vollindex: Lueckenchunks decken alles ab (K3).
+    gewaehlt = _greedy(text, spannen, kandidaten, belege, treffer, parameter) if kandidaten else []
     spannen_auswahl = _mit_luecken(spannen, gewaehlt, parameter.max_chars)
     return [
         Chunk(text=text[start:ende], start=start, ende=ende, strategie="qes")

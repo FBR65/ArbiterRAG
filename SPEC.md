@@ -706,6 +706,8 @@ von ArbiterRAG, begründet nur durch die Heuristik selbst, nicht durch Messung.
 | `xref_max` | 3 | war 2 |
 | `xref_chars` | 200 | war 320 |
 | `qe_fragen_max` | 60 | neu (D30) |
+| `qe_fenster` | 6000 | Zeichen je Anfrage zur Frage-Erzeugung (M3) |
+| `qe_fenster_max` | 4 | Anfragen je Datei (M3) |
 | `qe_hits` | 5 | neu: κ des Hit-Gates |
 | `qes_lambda` | 0.0001 | neu: Gewicht des Strukturterms |
 

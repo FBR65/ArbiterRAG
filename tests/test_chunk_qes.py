@@ -199,5 +199,28 @@ def test_property_kein_textverlust_bei_qes(text: str) -> None:
             assert abgedeckt[index], f"Zeichen {index} fehlt"
 
 
+def test_sehr_lange_saetze_gehen_begrenzt_an_den_embedder() -> None:
+    # Gemessen 2026-11-08: ein Satz mit 591 Tokens liess llama-server mit HTTP 500
+    # abbrechen ("input too large"). Der Embedder bekommt jetzt hoechstens 1200 Zeichen.
+    gesehen: list[str] = []
+
+    class Messend:
+        def embed(self, texts: list[str]) -> list[list[float]]:
+            gesehen.extend(texts)
+            return [[1.0, 0.0] for _ in texts]
+
+    text = "Anfang des Satzes. " + "x" * 5000 + " Ende."
+    chunks = chunke_qes(
+        text,
+        [QePaar(frage="Worum geht es?", belege=("Anfang des Satzes.",))],
+        parameter=ChunkParameter(strategie="qes", max_chars=600),
+        embedder=Messend(),
+    )
+    assert gesehen, "der Embedder wurde befragt"
+    assert max(len(teil) for teil in gesehen) <= 1200
+    assert all(teil == "Worum geht es?" or len(teil) <= 1200 for teil in gesehen)
+    assert chunks
+
+
 def test_nullvektor_bricht_die_trefferwahl_nicht() -> None:
     assert treffer_indizes([[0.0, 0.0], [1.0, 0.0]], [1.0, 0.0], k=1) == {1}

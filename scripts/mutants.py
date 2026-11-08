@@ -29,8 +29,8 @@ MUTANTS = [
     Mutant(
         "chunk-window-off-by-one",
         "src/arbiter/chunk.py",
-        "end = min(start + max_chars, length)",
-        "end = min(start + max_chars + 1, length)",
+        "ende = min(start + max_chars, length)",
+        "ende = min(start + max_chars + 1, length)",
     ),
     Mutant(
         "fusion-rank-off-by-one",
@@ -59,8 +59,8 @@ MUTANTS = [
     Mutant(
         "cli-unknown-rag-succeeds",
         "src/arbiter/cli.py",
-        "        return EXIT_USAGE\n\n    def build() -> Pipeline:",
-        "        return EXIT_OK\n\n    def build() -> Pipeline:",
+        '        return EXIT_USAGE\n\n    if args.command == "index"',
+        '        return EXIT_OK\n\n    if args.command == "index"',
     ),
     Mutant(
         "pipeline-skips-question-length-check",

@@ -54,3 +54,7 @@ def test_fenster_chunks_tragen_ihren_text_wortgleich() -> None:
     assert ergebnis.chunks
     for chunk in ergebnis.chunks:
         assert text[chunk.start : chunk.ende].strip() in chunk.text
+        # Die Position zeigt auf das erste und das letzte sichtbare Zeichen, nicht
+        # auf den Leerraum davor; sonst waere sie fuer die Seitenzuordnung wertlos.
+        assert not text[chunk.start].isspace()
+        assert not text[chunk.ende - 1].isspace()

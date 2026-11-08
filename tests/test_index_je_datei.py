@@ -95,20 +95,38 @@ def test_geaenderte_entscheider_schwelle_liest_die_datei_neu(tmp_path: Path) -> 
 
 def test_seitenuebergreifender_chunk_wird_auf_beiden_seiten_gefunden(tmp_path: Path) -> None:
     store = Store(tmp_path / "db", dim=2)
-    text = "Regel und Ausnahme in einem Abschnitt."
+    uebergreifend = "Regel und Ausnahme in einem Abschnitt."
+    nur_seite_eins = "Nur auf Seite eins."
     store.upsert(
         "k",
         [
             Record(
+                id="a.pdf#1#1",
+                text=nur_seite_eins,
+                quelle="a.pdf",
+                seite=1,
+                seite_ende=1,
+                hash=hashlib.sha256(nur_seite_eins.encode("utf-8")).hexdigest(),
+                vector=[0.0, 1.0],
+            ),
+            Record(
                 id="a.pdf#3#1",
-                text=text,
+                text=uebergreifend,
                 quelle="a.pdf",
                 seite=3,
                 seite_ende=4,
-                hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                hash=hashlib.sha256(uebergreifend.encode("utf-8")).hexdigest(),
                 vector=[1.0, 0.0],
-            )
+            ),
         ],
     )
-    assert text in store.page_text("k", "a.pdf", 3)
-    assert text in store.page_text("k", "a.pdf", 4)
+    assert uebergreifend in store.page_text("k", "a.pdf", 3)
+    assert uebergreifend in store.page_text("k", "a.pdf", 4)
+    # Seite 4 darf nicht ueber den Rueckfall auf das ganze Dokument gefunden werden.
+    assert nur_seite_eins not in store.page_text("k", "a.pdf", 4)
+
+
+def test_strategie_wechsel_liest_die_datei_neu(tmp_path: Path) -> None:
+    _pipeline(tmp_path).index()
+    zweiter = _pipeline(tmp_path, chunk_strategie="fenster").index()
+    assert zweiter.unchanged == 0, "eine andere Strategie aendert den Index"

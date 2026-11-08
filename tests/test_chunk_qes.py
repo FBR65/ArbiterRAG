@@ -6,7 +6,13 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from arbiter.chunk import ChunkParameter, QePaar, chunk_datei
-from arbiter.chunk_qes import beleg_indizes, chunke_qes, laengen_bereich, treffer_indizes
+from arbiter.chunk_qes import (
+    beleg_indizes,
+    chunke_qes,
+    laengen_bereich,
+    paare_im_fenster,
+    treffer_indizes,
+)
 
 DOKUMENT = """\
 Der Hund bellt im Hof.
@@ -68,6 +74,14 @@ def test_treffer_indizes_nimmt_die_aehnlichsten() -> None:
     vektoren = [[1.0, 0.0], [0.0, 1.0], [0.9, 0.1]]
     assert treffer_indizes(vektoren, [1.0, 0.0], k=2) == {0, 2}
     assert treffer_indizes(vektoren, [0.0, 1.0], k=1) == {1}
+
+
+def test_hit_gate_verlangt_treffer_und_beleg_im_fenster() -> None:
+    belege = [(0, (2,))]
+    treffer = [{0}]
+    assert paare_im_fenster(0, 2, belege, treffer) == {(0, 2)}
+    assert paare_im_fenster(2, 2, belege, treffer) == set(), "Beleg ohne Treffer zaehlt nicht"
+    assert paare_im_fenster(0, 0, belege, treffer) == set(), "Treffer ohne Beleg zaehlt nicht"
 
 
 def test_laengen_bereich_bleibt_im_rahmen() -> None:

@@ -211,25 +211,32 @@ def _greedy(
             break
         gewaehlt.append(bester)
         verbraucht += bester.kosten
-        abgedeckt |= _paare_von(bester, belege, treffer)
+        abgedeckt |= paare_im_fenster(bester.erster, bester.letzter, belege, treffer)
 
     return _mit_singleton_und_rest(
         text, spannen, kandidaten, belege, treffer, gewichte, gewaehlt, budget, parameter
     )
 
 
-def _paare_von(
-    fenster: _Fenster, belege: list[tuple[int, tuple[int, ...]]], treffer: list[set[int]]
+def paare_im_fenster(
+    erster: int,
+    letzter: int,
+    belege: list[tuple[int, tuple[int, ...]]],
+    treffer: list[set[int]],
 ) -> set[tuple[int, int]]:
-    """Pairs a chunk covers: evidence inside it *and* one hit block inside it (spec M5)."""
+    """Pairs a chunk covers: evidence inside it *and* one hit block inside it (spec M5).
+
+    The hit gate is the paper's point: a chunk that holds the answer but none of the
+    blocks the retriever would surface for that question is never retrieved for it.
+    """
     if not treffer:
         return set()
     paare: set[tuple[int, int]] = set()
     for nummer, (_, indizes) in enumerate(belege):
-        if not any(fenster.erster <= block <= fenster.letzter for block in treffer[nummer]):
+        if not any(erster <= block <= letzter for block in treffer[nummer]):
             continue
         for block in indizes:
-            if fenster.erster <= block <= fenster.letzter:
+            if erster <= block <= letzter:
                 paare.add((nummer, block))
     return paare
 
@@ -244,7 +251,7 @@ def _nutzen(
     abgedeckt: set[tuple[int, int]],
     parameter: ChunkParameter,
 ) -> float:
-    neu = _paare_von(fenster, belege, treffer) - abgedeckt
+    neu = paare_im_fenster(fenster.erster, fenster.letzter, belege, treffer) - abgedeckt
     nutzen = sum(gewichte[nummer] for nummer, _ in neu)
     return nutzen + parameter.qes_lambda * _strukturwert(text, spannen, fenster.letzter)
 
@@ -280,7 +287,7 @@ def _mit_singleton_und_rest(
     def gesamt(auswahl: list[_Fenster]) -> float:
         abgedeckt: set[tuple[int, int]] = set()
         for fenster in auswahl:
-            abgedeckt |= _paare_von(fenster, belege, treffer)
+            abgedeckt |= paare_im_fenster(fenster.erster, fenster.letzter, belege, treffer)
         return sum(gewichte[nummer] for nummer, _ in abgedeckt) + parameter.qes_lambda * sum(
             _strukturwert(text, spannen, fenster.letzter) for fenster in auswahl
         )

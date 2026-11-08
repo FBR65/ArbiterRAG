@@ -185,8 +185,8 @@ MUTANTS = [
     Mutant(
         "qes-hit-gate-abgeschaltet",
         "src/arbiter/chunk_qes.py",
-        "        if not any(fenster.erster",
-        "        if False and not any(fenster.erster",
+        "        if not any(erster <= block <= letzter for block in treffer[nummer]):",
+        "        if False:",
     ),
     # Kein Mutant fuer den Singleton-Schutz: bei normalisierten Gewichten (Summe 1)
     # erreicht die Greedy-Auswahl denselben Wert wie das beste Einzelfenster, solange

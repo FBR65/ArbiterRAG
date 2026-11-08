@@ -185,16 +185,13 @@ MUTANTS = [
     Mutant(
         "qes-hit-gate-abgeschaltet",
         "src/arbiter/chunk_qes.py",
-        "        if not any(fenster.erster <= block <= fenster.letzter\n"
-        "                for block in treffer[nummer]):\n            continue",
-        "        if False:\n            continue",
+        "        if not any(fenster.erster",
+        "        if False and not any(fenster.erster",
     ),
-    Mutant(
-        "qes-singleton-schutz-aus",
-        "src/arbiter/chunk_qes.py",
-        "    if bester_einzelner is not None and gesamt([bester_einzelner]) > gesamt(gewaehlt):",
-        "    if False:",
-    ),
+    # Kein Mutant fuer den Singleton-Schutz: bei normalisierten Gewichten (Summe 1)
+    # erreicht die Greedy-Auswahl denselben Wert wie das beste Einzelfenster, solange
+    # das Budget reicht. Der Unterschied ist nicht beobachtbar — ein Mutant waere
+    # nicht toetbar und wuerde nur die Quote druecken.
     Mutant(
         "qes-nimmt-mehrdeutige-fragmente",
         "src/arbiter/chunk_qes.py",

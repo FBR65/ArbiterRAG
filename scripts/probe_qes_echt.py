@@ -46,9 +46,7 @@ def main(argv: list[str]) -> int:
 
     text = seiten_text(args.pdf)
     chat = ChatClient(config.backends.base_url, rag.qe_model or config.backends.chat_model)
-    embedder = HttpEmbedder(
-        base_url=config.backends.base_url, model=config.backends.embed_model
-    )
+    embedder = HttpEmbedder(base_url=config.backends.base_url, model=config.backends.embed_model)
 
     paare = erzeuge_qe(
         text,
@@ -66,9 +64,7 @@ def main(argv: list[str]) -> int:
     chunks = chunke_qes(
         text,
         paare,
-        parameter=ChunkParameter(
-            strategie="qes", max_chars=rag.chunk_chars, qe_hits=rag.qe_hits
-        ),
+        parameter=ChunkParameter(strategie="qes", max_chars=rag.chunk_chars, qe_hits=rag.qe_hits),
         embedder=embedder,
     )
     if not chunks:

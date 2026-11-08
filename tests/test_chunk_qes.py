@@ -116,6 +116,20 @@ def test_qes_laesst_ueberlappung_zu() -> None:
     assert doppelt, "der Index darf sich ueberlappen"
 
 
+def test_lange_absaetze_halten_das_fensterlimit_ein() -> None:
+    # Lange Absaetze: das 90. Perzentil liegt ueber chunk_chars. Die Fensterlaenge darf
+    # trotzdem nicht ueber das Limit wachsen (K5).
+    text = "\n\n".join("Ein Satz mit Inhalt. " * 25 for _ in range(5))
+    chunks = chunke_qes(
+        text,
+        [QePaar(frage="a?", belege=("Ein Satz mit Inhalt.",))],
+        parameter=ChunkParameter(strategie="qes", max_chars=200),
+        embedder=WortEmbedder(),
+    )
+    assert chunks
+    assert all(chunk.ende - chunk.start <= 200 for chunk in chunks)
+
+
 def test_qes_ohne_verwertbare_belege_gibt_keine_chunks() -> None:
     chunks = chunke_qes(
         DOKUMENT,

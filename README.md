@@ -304,9 +304,10 @@ corpus: 21 questions, 12 answerable, 9 not answerable.
 | gate, check at 0.5, drop sentences, quote as fallback | 21 | 16 | 5 | 10 |
 | gate with grammar, check, partial answers allowed | 11 | 10 | 1 | 10 |
 
-Retrieval on the same corpus: recall@10 0.71, nDCG@10 0.65 (dense only, 600-character
-chunks). With the full-text half included, recall drops to 0.65 — the repeated footer of
-the slide deck matches almost every question.
+An earlier measurement on the same corpus gave recall@10 0.71 and nDCG@10 0.65 (dense
+only, 600-character windows); with the full-text half included, recall dropped to 0.65 —
+the repeated footer of the slide deck matches almost every question. The strategy
+comparison with complete-evidence recall is in the Chunking section.
 
 An acceptance test of eight questions against a 156-page magazine passed three. The
 failures are documented in `docs/EVIDENCE-verbesserungen.md`, section J.

@@ -85,6 +85,7 @@ class DateiBericht:
     wert: float | None
     kennzahlen: Kennzahlen | None
     chunks: int
+    begruendung: str = ""
 
 
 @dataclass
@@ -242,6 +243,7 @@ class Pipeline:
                 wert=ergebnis.auswahl.wert if ergebnis.auswahl else None,
                 kennzahlen=ergebnis.auswahl.kennzahlen if ergebnis.auswahl else None,
                 chunks=len(ergebnis.chunks),
+                begruendung=ergebnis.auswahl.begruendung if ergebnis.auswahl else "",
             )
             report.dateien.append(datei)
             for number, chunk in enumerate(ergebnis.chunks, start=1):
@@ -628,7 +630,6 @@ class Pipeline:
             max_chars=rag.chunk_chars,
             overlap=rag.chunk_overlap,
             ebene=rag.struktur_ebene,
-            schwelle=rag.struktur_schwelle,
             xref_max=rag.xref_max,
             xref_chars=rag.xref_chars,
             qes_budget_faktor=rag.qes_budget_faktor,
@@ -655,7 +656,6 @@ class Pipeline:
                 rag.chunk_overlap,
                 rag.chunk_strategie,
                 rag.struktur_ebene,
-                rag.struktur_schwelle,
                 rag.xref_max,
                 rag.xref_chars,
                 rag.qes_budget_faktor,

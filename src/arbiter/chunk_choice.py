@@ -1,14 +1,16 @@
-"""The decider: which chunk strategy fits this document (spec N).
+"""The decider: does this document have a structure the chunker can cut at? (spec N)
 
-Pure function of the text. No model call, no network, no configuration beyond the
-heading level and the threshold, so the same PDF always gets the same strategy.
+Pure function of the text. No model call, no network, no threshold. The question is
+binary — headings and numbered clauses, or not — because a score tried to predict which
+strategy retrieves better and was measured wrong (SPEC 11.11). Whether structure
+*retrieves* better stays a measurement, not a claim of this module.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from arbiter.chunk_structure import Kennzahlen, kennzahlen
+from arbiter.chunk_structure import Kennzahlen, abschnitte, kennzahlen, median_abschnitt
 
 
 @dataclass(frozen=True)
@@ -16,22 +18,41 @@ class Auswahl:
     strategie: str
     wert: float
     kennzahlen: Kennzahlen
+    begruendung: str = ""
 
 
-def wert(kennzahlen_wert: Kennzahlen) -> float:
-    """Structure score in [0, 1] (spec N3)."""
-    kopf = min(1.0, kennzahlen_wert.kopf_anteil / 0.60)
-    koepfe = min(1.0, kennzahlen_wert.koepfe_pro_1000 / 2.0)
-    xrefs = min(1.0, kennzahlen_wert.xrefs_pro_1000 / 1.0)
-    return round(0.5 * kopf + 0.3 * koepfe + 0.2 * xrefs, 6)
+def hat_struktur(text: str, *, max_chars: int = 600) -> bool:
+    """True when the text has at least two headings (spec N3, revision 11.13).
+
+    The earlier version also required a small median section length. Measured on the
+    corpus: that excluded exactly the files where the structure chunker won — a long
+    section is still cut at sentence boundaries, and its breadcrumb still helps. The
+    detector now answers only the question it can answer: are there headings at all.
+    """
+    del max_chars  # kept in the signature: the caller passes its chunk size
+    return len(_abschnitts_laengen(text)) >= 2
 
 
-def waehle(text: str, *, ebene: int, schwelle: float, max_chars: int = 600) -> Auswahl:
-    """``struktur`` when the document carries enough structure, else ``qes`` (spec N3)."""
+def _abschnitts_laengen(text: str) -> list[int]:
+    return [teil.ende - teil.start for teil in abschnitte(text) if teil.ebene > 0]
+
+
+def waehle(text: str, *, ebene: int, max_chars: int = 600) -> Auswahl:
+    """``struktur`` when the document is structured, else ``fenster`` (spec N3, rev. 11.12)."""
     gemessen = kennzahlen(text, ebene=ebene, max_chars=max_chars)
-    punktzahl = wert(gemessen)
-    return Auswahl(
-        strategie="struktur" if punktzahl >= schwelle else "qes",
-        wert=punktzahl,
-        kennzahlen=gemessen,
-    )
+    laenge = median_abschnitt(text)
+    if hat_struktur(text, max_chars=max_chars):
+        return Auswahl(
+            strategie="struktur",
+            wert=laenge,
+            kennzahlen=gemessen,
+            begruendung=f"Gliederung erkannt, Median-Abschnitt {laenge:.0f} Zeichen",
+        )
+    if laenge > 0.0:
+        grund = f"Überschriften ohne nutzbare Gliederung, Median-Abschnitt {laenge:.0f} Zeichen"
+    else:
+        grund = "keine Gliederung erkannt"
+    # Rückfall ist fenster, nicht qes: qes braucht erzeugte Fragen, kostet das 2,6-fache
+    # an Index und war in der Messung (7.3, 7.3b) auf keiner Datei besser. qes bleibt
+    # über --strategie qes erreichbar.
+    return Auswahl(strategie="fenster", wert=0.0, kennzahlen=gemessen, begruendung=grund)

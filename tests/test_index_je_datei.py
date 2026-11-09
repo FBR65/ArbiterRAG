@@ -89,7 +89,7 @@ def test_uebersteuerte_strategie_steht_im_bericht(tmp_path: Path) -> None:
 
 def test_geaenderte_entscheider_schwelle_liest_die_datei_neu(tmp_path: Path) -> None:
     _pipeline(tmp_path).index()
-    zweiter = _pipeline(tmp_path, struktur_schwelle=0.99).index()
+    zweiter = _pipeline(tmp_path, xref_max=1).index()
     assert zweiter.unchanged == 0
 
 
@@ -132,6 +132,7 @@ def test_eingespeiste_qe_quelle_ergibt_qes_zeilen(tmp_path: Path) -> None:
     pipeline = _pipeline(
         tmp_path,
         "Der Hund bellt im Hof. Das Tor oeffnet um 17:00. Es schliesst um 22:00.",
+        chunk_strategie="qes",
     )
     pipeline.qe_quelle = lambda _text: [
         QePaar(frage="Wann oeffnet das Tor?", belege=("Das Tor oeffnet um 17:00.",))

@@ -43,11 +43,10 @@ def main(argv: list[str]) -> int:
         print(f"{args.pdf.name}: keine Textebene")
         return 1
 
-    auswahl = waehle(text, ebene=2, schwelle=0.60)
+    auswahl = waehle(text, ebene=2, max_chars=args.chunk_chars)
     print(f"{args.pdf.name}: {len(text)} Zeichen")
     print(
-        f"  Entscheider: {auswahl.strategie} (Wert {auswahl.wert:.2f}, "
-        f"Kopfanteil {auswahl.kennzahlen.kopf_anteil:.2f}, "
+        f"  Entscheider: {auswahl.strategie} ({auswahl.begruendung}, "
         f"Köpfe {auswahl.kennzahlen.koepfe_pro_1000:.1f}/1000, "
         f"Verweise {auswahl.kennzahlen.xrefs_pro_1000:.1f}/1000)"
     )

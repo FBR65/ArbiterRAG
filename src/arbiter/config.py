@@ -60,7 +60,6 @@ class Rag:
     antwort_reparatur: bool = False
     chunk_strategie: str = "auto"
     struktur_ebene: int = 2
-    struktur_schwelle: float = 0.6
     xref_max: int = 3
     xref_chars: int = 200
     qes_budget_faktor: float = 3.0
@@ -115,7 +114,6 @@ _RAG_KEYS = {
     "antwort_reparatur",
     "chunk_strategie",
     "struktur_ebene",
-    "struktur_schwelle",
     "xref_max",
     "xref_chars",
     "qes_budget_faktor",
@@ -241,7 +239,6 @@ def _rag(name: str, entry: Any, filename: str) -> Rag:
         antwort_reparatur=bool(entry.get("antwort_reparatur", False)),
         chunk_strategie=str(entry.get("chunk_strategie", "auto")),
         struktur_ebene=int(entry.get("struktur_ebene", 2)),
-        struktur_schwelle=float(entry.get("struktur_schwelle", 0.6)),
         xref_max=int(entry.get("xref_max", 3)),
         xref_chars=int(entry.get("xref_chars", 200)),
         qes_budget_faktor=float(entry.get("qes_budget_faktor", 3.0)),

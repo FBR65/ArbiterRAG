@@ -104,14 +104,7 @@ def _index(pipeline: Pipeline) -> int:
 
 def _datei_zeile(datei: DateiBericht) -> str:
     """One line per file: which strategy was chosen, and why (spec N4)."""
-    if datei.uebersteuert or datei.kennzahlen is None or datei.wert is None:
-        herkunft = "übersteuert"
-    else:
-        herkunft = (
-            f"Wert {datei.wert:.2f}, Kopfanteil {datei.kennzahlen.kopf_anteil:.2f}, "
-            f"Köpfe {datei.kennzahlen.koepfe_pro_1000:.1f}/1000 Zeichen, "
-            f"Verweise {datei.kennzahlen.xrefs_pro_1000:.1f}/1000 Zeichen"
-        )
+    herkunft = "übersteuert" if datei.uebersteuert else datei.begruendung or "ohne Begründung"
     return f"  {datei.quelle}: {datei.strategie} ({herkunft}), {datei.chunks} Abschnitte"
 
 

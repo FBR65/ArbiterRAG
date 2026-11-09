@@ -757,3 +757,162 @@ Ergebnis und dem 2,6-fachen Index. `struktur` war in der Messung um 15,4
 Prozentpunkte besser, obwohl der Entscheider diesen Dateien kaum Struktur zubilligt.
 Der Zusammenhang zwischen meinem Maß und dem Messergebnis ist auf diesem Korpus
 nicht gegeben. Die Formel aus N3 ist damit eine unbelegte Annahme, keine Begründung.
+
+---
+
+### 11.11 Entscheider, zweiter Entwurf (2026-11-08, wartet auf Freigabe)
+
+Auftrag: „Das System soll als plugable System laufen, deshalb geht
+`chunk_strategie: struktur in arbiter.yaml` nicht. Denke erneut über einen Entscheider
+nach! vlt ist ein Decision Modell hilfreich, oder eine Decision Model Abfrage an ein
+LLM".
+
+Festlegung aus dem Auftrag: **die Strategie ist keine Konfiguration je Korpus.** Eine
+neue Strategie im System muss ohne Änderung an `arbiter.yaml` mitspielen.
+
+#### Warum die drei naheliegenden Wege nicht reichen
+
+| Bauform | Was sie leistet | Warum sie hier nicht genügt |
+|---|---|---|
+| Heuristik über Überschriften (N3, gebaut) | kostenlos, deterministisch | gemessen falsch: sagte `qes` für alle Dateien voraus, `struktur` gewann |
+| LLM gefragt „welcher Chunker passt?" | billig, erklärbar | das Modell kennt das Messergebnis nicht; es beurteilt die Form des Textes, nicht die Auffindbarkeit. Auf diesem Korpus hätte es `struktur` kaum erkannt, weil die Überschriften schwach sind |
+| gelerntes Entscheidungsmodell | schnell, wenn trainiert | es gibt 5 Dateien und 31 Fragen. Ein Modell darauf ist nicht unterscheidbar von Raten |
+
+Alle drei schätzen. Das Messergebnis ist aber direkt herstellbar: für ein Dokument
+lassen sich die Kandidaten **messen**, bevor der Index geschrieben wird.
+
+#### Vorschlag: der Entscheider misst statt zu schätzen
+
+Für eine neue Datei, vor dem Schreiben:
+
+1. **Prüffragen erzeugen** mit der vorhandenen Maschine aus `chunk_qe` — dieselbe, die
+   `qes` als Überwachung nutzt. Die Fragen werden **zweigeteilt**: Hälfte A zum
+   Anpassen, Hälfte B zum Prüfen.
+2. **Jede Kandidatenstrategie bauen**, nur im Speicher: `struktur`, `fenster`, `qes`.
+   `qes` sieht ausschließlich Hälfte A (sonst optimiert es auf die Prüffragen und
+   gewinnt per Konstruktion).
+3. **Prüfen auf Hälfte B**: für jede Frage die Einbettung der Frage gegen die
+   Chunks der Strategie, die besten `fuse_top_k` nehmen, und zählen, ob alle
+   Belegsätze der Frage in einem dieser Chunks stehen — Complete-Evidence-Recall,
+   die Kennzahl aus dem Artikel.
+4. **Wählen**: höchster Wert gewinnt. Bei Gleichstand gewinnt der kleinere Index,
+   danach die feste Reihenfolge `struktur` > `fenster` > `qes`.
+5. **Bericht**: je Datei, je Strategie der gemessene Wert und die Indexgröße. Diese
+   Zeile ist der Beleg des Entscheiders — nachprüfbar, nicht behauptet.
+
+Damit ist der Entscheider pluggable: Jede Strategie, die sich in die Weiche einträgt,
+konkurriert automatisch. Kein YAML-Schlüssel, keine Schwelle, kein Trainingssatz.
+
+#### Kosten, ehrlich
+
+Der Entscheider bettet die Chunks jeder Kandidatenstrategie einmal ein — das ist der
+teuerste Schritt des Ingests, vervielfacht mit der Zahl der Kandidaten. Gemessen am
+heutigen Korpus: `struktur` 860 839 Zeichen, `fenster` 943 914, `qes` 2 469 004. Drei
+Kandidaten heißen also rund das Vierfache an Einbettungen gegenüber heute. Für ein
+einmal aufgenommenes PDF ist das vertretbar; für 500 PDFs sind es Stunden. Deshalb D35.
+
+#### Offene Entscheidungen
+
+| ID | Frage | Optionen | Empfehlung |
+|---|---|---|---|
+| D32 | Wie entscheidet der Entscheider? | (a) messen je Datei mit eigenen Prüffragen (b) LLM-Klassifikation über Logprobs (c) gelerntes Modell (d) Heuristik behalten | **(a)** — (b) und (c) schätzen, und die Schätzung ist auf diesem Korpus bereits widerlegt. (b) kostet einen Modellaufruf, liefert aber keine Begründung, die man nachprüfen kann |
+| D33 | Woher kommen die Prüffragen? | (a) dieselbe Erzeugung wie `qes`, zweigeteilt (Fit/Prüf) (b) feste Fragen je Korpus in der YAML (c) nur Merkmale, keine Fragen | **(a)** — (b) wäre wieder Konfiguration je Korpus, genau das, was du ausschließt |
+| D34 | Was, wenn kein Modell erreichbar ist? | (a) Rückfall auf die Heuristik N3, im Bericht als „geschätzt" markiert (b) Abbruch (c) immer `fenster` | **(a)** — der Ingest darf nicht an einem Modell scheitern, aber die Zeile muss sagen, dass geschätzt wurde |
+| D35 | Wie viele Kandidaten darf der Entscheider kosten? | (a) alle registrierten Strategien (b) höchstens drei, `qes` nur wenn sein Index höchstens 3 × Dokument ist (c) höchstens zwei | **(b)** — `qes` ist auf diesem Korpus 2,6-fach und ohne Gewinn; die Messung selbst soll ihn aber nicht ausschließen, wenn er billig ist |
+| D36 | Prüft der Entscheider mit dichtem Retriever oder mit dem echten Hybrid? | (a) wie der RAG konfiguriert ist (`hybrid`, `fts`), also mit dem echten Retriever (b) immer dicht, weil billiger | **(a)** — der Entscheider soll messen, was das System tut, nicht ein Modell davon |
+
+#### Verhalten (Abnahmekriterien)
+
+- **R1** `strategie_waehlen(text, kandidaten, prueffragen, embedder, parameter)`
+  liefert je Kandidat einen Wert in [0, 1] und die gewählte Strategie. Reine Funktion
+  ohne Dateisystem und ohne Store.
+- **R2** Die Prüffragen werden zweigeteilt: gerade Indizes an die Anpassung, ungerade
+  an die Prüfung. `qes` erhält nur die Anpassungshälfte. Ist eine Hälfte leer, gilt
+  die Heuristik (D34).
+- **R3** Ein Beleg zählt als gefunden, wenn **alle** seine Belegsätze in einem der
+  `fuse_top_k` besten Chunks stehen (Complete-Evidence-Recall, wie im Artikel).
+  Teilweise gefundene Belege zählen nicht.
+- **R4** Bei Gleichstand gewinnt der kleinere Index (Summe der Chunklängen), danach
+  die feste Reihenfolge `struktur` > `fenster` > `qes` > weitere in Registrierreihenfolge.
+- **R5** Der Bericht je Datei nennt je Kandidat den Wert und die Indexgröße und
+  markiert, ob gemessen oder geschätzt wurde.
+- **R6** Der Index selbst enthält nur die Chunks der gewählten Strategie.
+- **R7** Ohne Prüffragen oder ohne Embedder gilt die Heuristik N3; der Bericht trägt
+  `geschätzt` und den Grund.
+- **R8** Der Entscheider schreibt nichts in den Store und ruft kein Chat-Modell
+  außer über die vorhandene Frage-Erzeugung.
+
+#### Setup
+
+| Punkt | Inhalt |
+|---|---|
+| Neue Abhängigkeiten | keine |
+| Neue Datei | `src/arbiter/chunk_decide.py`, `tests/test_chunk_decide.py` |
+| Geändert | `pipeline.py` (Weiche ruft den Entscheider, Bericht), `chunk.py` (Registry der Strategien statt fester Verzweigung) |
+| Aufwand | ~1 Tag samt Tests und erneuter Messung |
+| Messung | gleiche Prozedur wie 7.3; zusätzlich: Wie oft wählt der Entscheider die gemessen beste Strategie? (Trefferquote) |
+
+**Status:** Entwurf 2026-11-08. Wartet auf Freigabe von D32–D36 und R1–R8.
+Kein Code vor der Freigabe.
+
+---
+
+### 11.12 Entscheider, dritter Entwurf: binärer Strukturdetektor (2026-11-08, umgesetzt)
+
+Auftrag: „Also willst du mir erzählen, dass du nicht in der Lage bist einen Entscheider
+zu implementieren, der Unterscheiden kann, ob ein Ingest Überschriften und Struktur
+hat oder eine Mail oder ein Text ohne Struktur?" — Antwort: doch, das ist möglich, und
+es ist gebaut. Die Punktzahl aus N3 ist **ersetzt**.
+
+#### Was der Detektor fragt
+
+Nicht „welche Strategie holt mehr Belege" — das ist eine Messung, keine Eigenschaft des
+Textes. Er fragt nur: **hat dieser Text eine Gliederung, an der der Chunker schneiden
+kann?**
+
+- **Ja** (`struktur`), wenn mindestens **zwei** Überschriften erkannt werden **und** der
+  Median der Abschnittslängen höchstens **1,5 × `chunk_chars`** beträgt.
+- **Nein** (`fenster`), sonst. Eine Mail, ein Chatprotokoll oder ein Fließtext ohne
+  Überschriften ergibt null Überschriften. Ein Artikel mit zwei Kapitelüberschriften
+  über 20 000 Zeichen hat Überschriften, aber keine nutzbaren Einheiten — der Median
+  entscheidet, nicht die Anzahl allein.
+
+`qes` ist nicht mehr Rückfall. Grund: gemessen (7.3 und 7.3b) war `qes` auf keiner Datei
+besser als `fenster`, kostet aber das 2,6-fache an Index und Modellaufrufe. `qes` bleibt
+über `--strategie qes` erreichbar.
+
+#### Was sich am Vertrag ändert
+
+| Punkt | vorher | nachher |
+|---|---|---|
+| N3 | Punktzahl aus Kopfanteil, Überschriftendichte, Verweisdichte; Schwelle 0,60 | binärer Detektor, keine Schwelle |
+| Rückfall | `qes` | `fenster` |
+| `struktur_schwelle` | Konfigurationsschlüssel | **entfernt**; wer ihn setzt, bekommt den Fehler aus A3 |
+| `wert` im Bericht | Punktzahl | Median-Abschnittslänge in Zeichen |
+| Berichtszeile | Zahl plus Kennzahlen | Klartext: „Gliederung erkannt, Median-Abschnitt 766 Zeichen" |
+
+#### Beleg (Korpusebene)
+
+*Berichtigt 2026-11-08:* Eine erste Fassung dieses Abschnitts enthielt eine Tabelle
+„Recall je Datei". Diese Zahlen waren falsch: das Hilfsskript prüfte nur die Seitenzahl
+und nicht die Quelle, also galt jeder Treffer auf Seite 5 als Beleg. Das Skript prüft
+jetzt beide Felder. Eine belastbare Pro-Datei-Zahl braucht mehr Fragen je Datei, als das
+Goldset hergibt (4 bis 6). Gemessen wird deshalb auf Korpusebene.
+
+| Strategie | Abschnitte | Index | Recall@10 |
+|---|---|---|---|
+| fenster | 1511 | 943 914 | 0,538 |
+| struktur | 1643 | 860 839 | 0,692 |
+| qes | 6180 | 2 469 004 | 0,538 |
+| **auto (Detektor)** | **1643** | **860 839** | **0,692** |
+
+Der Detektor wählt `struktur` für vier Dateien (Median-Abschnitte 250 bis 3735 Zeichen)
+und `fenster` für das eine Trennblatt ohne Überschriften. Ergebnis: genau der Wert der
+besten gemessenen Strategie, ohne einen einzigen Konfigurationsschlüssel, mit kleinerem
+Index als der bisherige Stand.
+
+**Grenze, die bleibt:** Welche Strategie beim *Suchen über den ganzen Korpus* gewinnt,
+hängt auch davon ab, wie viele konkurrierende Chunks eine Datei beisteuert. Diese Zahl
+misst der Detektor nicht. Er entscheidet über die Form des Dokuments, nicht über das
+Retrieval-Ergebnis. Auf diesem Korpus fällt beides zusammen — das ist ein Messergebnis,
+keine Garantie.

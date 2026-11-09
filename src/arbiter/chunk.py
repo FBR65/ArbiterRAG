@@ -62,7 +62,6 @@ class ChunkParameter:
     max_chars: int = 600
     overlap: int = 100
     ebene: int = 2
-    schwelle: float = 0.60
     xref_max: int = 3
     xref_chars: int = 200
     qes_budget_faktor: float = 3.0
@@ -169,12 +168,7 @@ def chunk_datei(
         # chunk_structure reads Chunk from this module.
         from arbiter.chunk_choice import waehle
 
-        gewaehlt = waehle(
-            text,
-            ebene=parameter.ebene,
-            schwelle=parameter.schwelle,
-            max_chars=parameter.max_chars,
-        )
+        gewaehlt = waehle(text, ebene=parameter.ebene, max_chars=parameter.max_chars)
         auswahl = gewaehlt
         strategie = gewaehlt.strategie
 

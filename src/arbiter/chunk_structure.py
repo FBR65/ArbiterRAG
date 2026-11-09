@@ -157,6 +157,17 @@ def kennzahlen(text: str, ebene: int, max_chars: int = 600) -> Kennzahlen:
     )
 
 
+def median_abschnitt(text: str) -> float:
+    """Median length of the sections that have a heading (spec N, revision 11.12)."""
+    laengen = sorted(teil.ende - teil.start for teil in abschnitte(text) if teil.ebene > 0)
+    if not laengen:
+        return 0.0
+    mitte = len(laengen) // 2
+    if len(laengen) % 2:
+        return float(laengen[mitte])
+    return (laengen[mitte - 1] + laengen[mitte]) / 2
+
+
 def chunk_struktur(
     text: str,
     *,

@@ -103,7 +103,8 @@ Frage dem Chunking gilt.
 | fenster (bisheriger Stand) | 1511 | 943 914 | 0,538 |
 | struktur | 1643 | 860 839 | **0,692** |
 | qes | 6180 | 2 469 004 | 0,538 |
-| auto | 6180 | 2 469 004 | 0,538 |
+| auto (erster Entscheider, Punktzahl) | 6180 | 2 469 004 | 0,538 |
+| **auto (binärer Detektor, Stand jetzt)** | **1643** | **860 839** | **0,692** |
 
 Reproduzierbar mit `scripts/messe_chunking.py` (eigener Store je Strategie).
 
@@ -115,10 +116,20 @@ Reproduzierbar mit `scripts/messe_chunking.py` (eigener Store je Strategie).
 2. **`qes` bringt hier nichts**: gleicher Recall wie `fenster`, bei 2,6-fachem Index
    und dem Vielfachen an Rechenzeit. Die Frage-Beleg-Paare stammen aus dem Dokument
    selbst; sie bilden die 31 echten Fragen nicht ab.
-3. **Der Entscheider verliert**: Er wählte `qes` für alle fünf Dateien (Werte 0,00,
+3. **Der erste Entscheider verlor**: Er wählte `qes` für alle fünf Dateien (Werte 0,00,
    0,02, 0,05, 0,06, 0,48 — alle unter 0,60) und damit die schlechteste Strategie.
-   Sein Maß sagt auf diesem Korpus das Messergebnis nicht voraus. N3 ist eine
-   unbelegte Annahme.
+   Seine Punktzahl sagte das Messergebnis nicht voraus.
+4. **Der binäre Detektor trifft**: Er fragt nur, ob mindestens zwei Überschriften im
+   Text stehen. Damit wählt er `struktur` für vier Dateien und `fenster` für das eine
+   Trennblatt ohne Überschriften — und erreicht **0,692**, den besten gemessenen Wert,
+   bei kleinerem Index als der bisherige Stand. Ohne Konfigurationsschlüssel.
+
+### Ein Fehler in dieser Messung, den ich gemacht habe
+
+Eine erste Fassung meldete „Recall je Datei". Diese Zahlen waren falsch: das Skript
+prüfte nur die Seitenzahl, nicht die Quelle. Jeder Treffer auf Seite 5 galt als Beleg,
+auch aus einem anderen Dokument. Das Skript prüft jetzt beide Felder; belastbar ist nur
+die Korpusebene. Die falschen Zahlen sind aus der SPEC entfernt, nicht umgedeutet.
 
 ### Grenzen dieser Messung
 

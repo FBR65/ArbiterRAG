@@ -916,3 +916,107 @@ hängt auch davon ab, wie viele konkurrierende Chunks eine Datei beisteuert. Die
 misst der Detektor nicht. Er entscheidet über die Form des Dokuments, nicht über das
 Retrieval-Ergebnis. Auf diesem Korpus fällt beides zusammen — das ist ein Messergebnis,
 keine Garantie.
+
+---
+
+### 11.14 PaddleOCR-VL als Textquelle mit Tabellen-Chunking (2026-11-08, Entwurf)
+
+Auftrag: „Setze B um inkl des chunking für Tabellen" und „Paddle nutzt otl oder
+ähnlich".
+
+Gemeint ist **OTSL** (Open Table Structure Language): Paddle gibt Tabellen als
+Tokenfolge aus, zum Beispiel `<fcel>Betrag<fcel>Datum<fcel>Posten<nl><fcel>940,00…`.
+Zellen werden durch `<fcel>` (Inhalt), `<ecel>` (leer), `<nl>` (Zeilenende) markiert;
+verbundene Zellen durch `<lcel>`, `<ucel>`, `<xcel>`. Welche Teilmenge das laufende
+Modell liefert, ist **nicht bestätigt**: der Probelauf lief in ein Timeout beim
+Modellwechsel. Das erste Arbeitspaket ist deshalb die Formatprüfung an einer Seite.
+
+#### Was heute passiert
+
+| Stelle | heute | Folge |
+|---|---|---|
+| `ocr.py: dots_to_text` | reduziert dots-Layout-JSON zu Fließtext | Überschriften und Tabellen sind weg |
+| `pipeline` | indiziert den dots-Text | Paddle-Ausgabe (`ocr_paddle`) wird nie indiziert |
+| `loaders` | OCR nur bei fehlender Textebene | bei deinem Korpus läuft OCR fast nie |
+
+#### Offene Entscheidungen
+
+| ID | Frage | Optionen | Empfehlung |
+|---|---|---|---|
+| D37 | Wann läuft Paddle als Textquelle? | (a) nur bei fehlender Textebene wie heute (b) auf jeder Seite, wenn `ocr_alle_seiten: true` (c) nur auf Seiten mit erkanntem Tabellengitter | **(b)** — (a) ändert an deinem Korpus nichts, weil alle Seiten eine Textebene haben. (c) ist ein Billigfilter, aber ungetestet; er kann später ergänzt werden |
+| D38 | Tabellenerkennung ohne Voll-OCR? | (a) nein (b) ja, über Linien und Rechtecke aus dem PDF (pypdfium2 liefert Seitenobjekte) (c) über Spaltenabstände im extrahierten Text | **(a)** jetzt: (c) ist gemessen wertlos (0 von 8 PDFs mit Spaltenabständen), (b) ist ein eigenes Arbeitspaket |
+| D39 | Wie fein werden Tabellen gechunkt? | (a) eine Zeile je Chunk mit wiederholter Kopfzeile (b) bis zu fünf Zeilen je Chunk | **(a)** — eine Zeile ist die kleinste Aussage, die man prüfen kann; Bündelung verwässert den Beleg |
+| D40 | Verbundene Zellen | (a) Wert in jede abgedeckte Zeile wiederholen (b) leere Zelle als `⟂` markieren (c) Zeile verwerfen | **(a)**, wo der Verbund eindeutig ist, sonst (b) mit Warnung. Nie einen Wert erfinden |
+| D41 | Welches Ausgabeformat erwartet der Parser? | (a) OTSL (b) HTML (c) Markdown (d) alle drei | **(d)** — das Modell wird über den Prompt gesteuert, der Probelauf entscheidet, welche Form zurückkommt. Der Parser erkennt die Form am Text, nicht an der Konfiguration |
+
+#### Verhalten (Abnahmekriterien)
+
+- **V1** Die OCR-Strecke liefert zusätzlich zur Textlesung die **strukturierte** Lesung
+  (Markdown oder OTSL/HTML). Indiziert wird die strukturierte Lesung, wenn sie
+  vorhanden ist; die dots-Lesung bleibt als `ocr_paddle`-Vergleich erhalten.
+- **V2** `otsl_zu_tabelle(text)` erkennt die Form und liefert `Tabelle(kopf: tuple[str,…],
+  zeilen: list[tuple[str,…]])`. Unbekannte Token werden als Zellgrenze behandelt und
+  erzeugen eine Warnung, nie einen stillen Verlust.
+- **V3** `tabellen_chunks(markdown)` findet Tabellenblöcke und liefert je Tabelle:
+  einen Kopf-Chunk mit Kopfzeile und bis zu `tabellen_kopf_zeilen` Zeilen (Default 3),
+  danach je Zeile einen Chunk der Form
+  `<Pfad> | Kopf: Betrag, Datum, Posten | Zeile: 940,00, 01.04.2026, Miete`.
+- **V4** Kein Zeilen-Chunk ohne seine Kopfzeile. Ist die Kopfzeile im Dokument nicht
+  erkennbar, trägt der Chunk `Kopf: unbekannt` und der Bericht eine Warnung.
+- **V5** Ein Zeilen-Chunk ist höchstens `chunk_chars` Zeichen lang; breitere Zeilen
+  werden an Zellgrenzen geteilt, mit wiederholter Kopfzeile.
+- **V6** Der Struktur-Chunker schneidet nicht in eine Tabelle: ein Tabellenblock ist
+  eine Einheit, auch wenn er über mehrere Seiten läuft.
+- **V7** Die Satzprüfung verwirft Tabellenzeilen nicht mehr als „kein Satz". Ein
+  Zeilen-Chunk gilt als eine Aussage.
+- **V8** Der Indexbericht nennt je Datei Zahl der Tabellen und Zeilen-Chunks.
+- **V9** Ohne Paddle-Ausgabe bleibt alles wie heute; kein Absturz, Warnung im Bericht.
+
+#### Neue Konfiguration
+
+| Schlüssel | Default | Bedeutung |
+|---|---|---|
+| `tabellen_kopf_zeilen` | 3 | Zeilen im Kopf-Chunk |
+| `tabellen_max_zeilen` | 200 | Obergrenze je Tabelle, darüber Warnung |
+| `ocr_paddle_prompt` | `OCR:` | Prompt; der Probelauf legt den Wert für strukturierte Ausgabe fest |
+
+#### Arbeitspakete
+
+| Paket | Inhalt | Aufwand |
+|---|---|---|
+| 1 | Probelauf: eine Seite aus `ix.26.13.pdf` und eine Rechnung, drei Prompts, Ausgabeformat feststellen | 0,5 h |
+| 2 | `otsl_zu_tabelle` + `tabellen_chunks` mit Tests (OTSL, HTML, Markdown) | 3 h |
+| 3 | Loader: strukturierte Lesung indizieren, `ocr_paddle` behalten | 1 h |
+| 4 | Prüfschicht: Tabellenzeile als Aussage | 1 h |
+| 5 | Messung: Recall@10 auf dem Korpus, vorher/nachher | 1 h |
+
+**Status:** Entwurf 2026-11-08. Wartet auf Freigabe von D37–D41 und V1–V9.
+Kein Code vor der Freigabe.
+
+#### Ergebnis Paket 1 (2026-11-09, llama-swap `paddleocr-vl`)
+
+Drei Seiten, zwei Prompts, Modell über llama-swap (kein Paddle-Paket):
+
+| Fall | `OCR:` | `Table Recognition:` |
+|---|---|---|
+| Zeitungsseite mit Code (S. 17) | 35 833 Zeichen, treu, keine Struktur | 8 511 Zeichen, OTSL — modelliert die **Seitenspalten** als Tabelle |
+| Zeitungsseite mit Anzeigenkasten (S. 145) | — | OTSL — Anzeigenkasten als Zelle, Tabelle selbst nicht erkannt |
+| **Steuerbescheid (Bild, eine Seite)** | 50,7 s, 1 475 Zeichen, 80 Zeilen | **3,4 s, 78 OTSL-Token, 13 Zeilen × 5 Spalten**, 23 × `lcel`, 3 × `ucel`, 0 × `xcel` |
+| Markdown-Prompt | 104 s, **keine** Pipes, Text verschlechtert (`postgix.de`) | — |
+
+Prüfsumme der Bescheid-Tabelle ohne Ausgabe von Werten: 34 gefüllte Zellen, davon 6 im
+deutschen Betragsformat, 1 Datum, 7 reine Textfelder, ein Textfeld mit 362 Zeichen.
+
+**Folgerungen für den Vertrag:**
+
+1. **Format ist OTSL**, bestätigt: `<fcel>`, `<ecel>`, `<lcel>`, `<ucel>`, `<nl>`. `<xcel>`
+   trat nicht auf, wird aber nach OTSL-Spezifikation unterstützt.
+2. **Das Modell erkennt Dokumenttabellen, keine Layout-Kästen.** Auf dem Steuerbescheid
+   liefert es ein konsistentes 5-Spalten-Raster; auf der Zeitungsseite modelliert es
+   die Seitenspalten. Der Prompt darf deshalb nicht blind auf jede Seite — D38
+   (Tabellenerkennung) bleibt offen, ist aber für Papierdokumente unkritisch, weil dort
+   fast jede Seite eine Tabelle hat.
+3. **`OCR:` ist der richtige Prompt für Text**, `Table Recognition:` für Tabellen. Beide
+   in einem Durchgang zu verlangen, hat nicht funktioniert (Markdown-Prompt).
+4. **Geschwindigkeit reicht**: 3,4 s je Seite warm. `ix.26.13.pdf` mit 156 Seiten wäre
+   damit in rund neun Minuten durch, nicht in zehn Stunden wie mit PP-StructureV3 auf CPU.

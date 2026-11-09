@@ -87,6 +87,28 @@ def test_uebersteuerte_strategie_steht_im_bericht(tmp_path: Path) -> None:
     assert bericht.uebersteuert is True
 
 
+def test_bericht_nennt_tabellen_und_zeilen_chunks(tmp_path: Path) -> None:
+    text = (
+        "1 Rechnung\n"
+        "Die Rechnung nennt zwei Posten.\n\n"
+        "| Art | Betrag |\n| --- | --- |\n"
+        "| Miete | 940,00 |\n| Strom | 80,00 |\n| Gas | 60,00 |\n"
+        "| Wasser | 40,00 |\n| Heizung | 120,00 |\n"
+    )
+    pipeline = _pipeline(tmp_path, text=text)
+    report = pipeline.index()
+    bericht = report.dateien[0]
+    assert bericht.tabellen == 1
+    assert bericht.zeilen_chunks == 2
+    assert report.tabellen == 1
+    assert report.zeilen_chunks == 2
+    rows = pipeline.store._table("k").to_arrow().to_pylist()
+    zeilen = [row for row in rows if "Zeile:" in row["text"]]
+    assert len(zeilen) == 2
+    assert all(row["strategie"] == bericht.strategie for row in rows)
+
+
+
 def test_geaenderte_entscheider_schwelle_liest_die_datei_neu(tmp_path: Path) -> None:
     _pipeline(tmp_path).index()
     zweiter = _pipeline(tmp_path, xref_max=1).index()

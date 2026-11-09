@@ -13,7 +13,7 @@ silently.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from arbiter.chunk import Chunk
 
@@ -151,10 +151,14 @@ def _block_zu_tabelle(block: list[str]) -> Tabelle:
     ):
         kopf = zellen[0]
         zeilen = zellen[2:]
+        warnungen: list[str] = []
     else:
-        kopf = zellen[0]
-        zeilen = zellen[1:]
-    return Tabelle(kopf=kopf, zeilen=zeilen)
+        # Ohne Trenner ist die erste Zeile keine erkennbare Kopfzeile. Sie als Kopf
+        # auszugeben waere geraten; der Chunk sagt stattdessen "Kopf: unbekannt" (V4).
+        kopf = ()
+        zeilen = zellen
+        warnungen = ["Tabelle ohne Kopfzeilentrenner, Kopf: unbekannt"]
+    return Tabelle(kopf=kopf, zeilen=zeilen, warnungen=warnungen)
 
 
 def _zellen(zeile: str) -> tuple[str, ...]:
@@ -214,3 +218,97 @@ def _zeile_teilen(
     if aktuell:
         teile.append(praefix + kopfzeile + " Zeile: " + aktuell)
     return teile
+
+
+@dataclass(frozen=True)
+class TabellenBlock:
+    """One Markdown table with the span it occupies in the document text."""
+
+    start: int
+    ende: int
+    tabelle: Tabelle
+
+
+@dataclass(frozen=True)
+class TabellenErgebnis:
+    """The table chunks of a text plus what the report needs to say about them."""
+
+    chunks: list[Chunk] = field(default_factory=list)
+    warnungen: list[str] = field(default_factory=list)
+    tabellen: int = 0
+    zeilen_chunks: int = 0
+
+
+def tabellen_bloecke(text: str) -> list[TabellenBlock]:
+    """Every Markdown table block with its character span (spec V3, V6).
+
+    The span is what makes a table chunk belong to its page. Without it every row
+    chunk would start at position 0 and be filed under page 1.
+    """
+    bloecke: list[TabellenBlock] = []
+    start = -1
+    zeilen: list[str] = []
+    offset = 0
+    for roh in text.splitlines(keepends=True):
+        inhalt = roh.rstrip("\r\n")
+        if inhalt.strip().startswith("|"):
+            if start < 0:
+                start = offset
+            zeilen.append(inhalt)
+        elif start >= 0:
+            bloecke.append(TabellenBlock(start, offset, _block_zu_tabelle(zeilen)))
+            start = -1
+            zeilen = []
+        offset += len(roh)
+    if start >= 0:
+        bloecke.append(TabellenBlock(start, offset, _block_zu_tabelle(zeilen)))
+    return [block for block in bloecke if block.tabelle.zeilen or block.tabelle.kopf]
+
+
+def tabellen_chunks(
+    text: str,
+    *,
+    max_chars: int,
+    kopf_zeilen: int,
+    max_zeilen: int = 200,
+    pfad: tuple[str, ...] = (),
+) -> TabellenErgebnis:
+    """One head chunk and one chunk per row, for every table in ``text`` (spec V3)."""
+    chunks: list[Chunk] = []
+    warnungen: list[str] = []
+    tabellen = 0
+    zeilen_chunks = 0
+    for block in tabellen_bloecke(text):
+        tabellen += 1
+        tabelle = block.tabelle
+        warnungen.extend(tabelle.warnungen)
+        if max_zeilen > 0 and len(tabelle.zeilen) > max_zeilen:
+            warnungen.append(
+                f"Tabelle mit {len(tabelle.zeilen)} Zeilen über der Obergrenze "
+                f"{max_zeilen}, Rest nicht indiziert"
+            )
+            tabelle = replace(tabelle, zeilen=tabelle.zeilen[:max_zeilen])
+        for chunk in tabelle_zu_chunks(
+            tabelle, pfad=pfad, max_chars=max_chars, kopf_zeilen=kopf_zeilen
+        ):
+            chunks.append(replace(chunk, start=block.start, ende=block.ende))
+            if "Zeile:" in chunk.text:
+                zeilen_chunks += 1
+    return TabellenErgebnis(
+        chunks=chunks, warnungen=warnungen, tabellen=tabellen, zeilen_chunks=zeilen_chunks
+    )
+
+
+
+def maskiere_tabellen(text: str) -> str:
+    """Replace every table block with whitespace of the same length (spec V6).
+
+    The chunker then never cuts into a table, and no text stands twice in the index.
+    Length and line breaks stay, so every character position keeps its meaning.
+    """
+    zeichen = list(text)
+    for block in tabellen_bloecke(text):
+        for index in range(block.start, block.ende):
+            if zeichen[index] != "\n":
+                zeichen[index] = " "
+    return "".join(zeichen)

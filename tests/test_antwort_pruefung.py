@@ -99,3 +99,23 @@ def test_unsupported_sentence_is_dropped_not_the_whole_answer(tmp_path: Path) ->
     assert antwort.text is not None
     assert antwort.text.startswith("Belegstelle:")
     assert any("Gestrichen" in warnung for warnung in antwort.warnungen)
+
+
+def test_tabellenzeile_ist_eine_eigene_aussage() -> None:
+    # SPEC V7: eine Tabellenzeile endet nicht auf einen Punkt. Sie ist trotzdem eine
+    # Aussage und wird nicht mit den Nachbarzeilen zu einer Aussage verschmolzen.
+    text = (
+        "Kopf: Art, Betrag | Zeile: Miete, 940,00 [a.pdf, S. 1]\n"
+        "Kopf: Art, Betrag | Zeile: Strom, 80,00 [a.pdf, S. 1]"
+    )
+    claims = split_claims(text)
+    assert len(claims) == 2
+    assert "Miete" in claims[0][0]
+    assert "Strom" in claims[1][0]
+
+
+def test_quelle_der_ersten_zeile_gilt_fuer_die_folgenden_zeilen() -> None:
+    text = "[a.pdf, S. 1] Kopf: Art, Betrag\n| Miete | 940,00 |\n| Strom | 80,00 |"
+    claims = split_claims(text)
+    assert [quelle for _, quelle, _ in claims] == ["a.pdf", "a.pdf", "a.pdf"]
+

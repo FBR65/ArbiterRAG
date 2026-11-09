@@ -93,7 +93,8 @@ def _index(pipeline: Pipeline) -> int:
         f"{report.chunks} Abschnitte, {report.changed} neu oder geändert, "
         f"{report.skipped_files} ohne Text, {report.textless_pages} Seiten ohne Text, "
         f"{report.ocr_pages} Seiten per OCR, {report.duplicates} Dubletten, "
-        f"{report.entfernt} Dateien aus dem Index entfernt"
+        f"{report.entfernt} Dateien aus dem Index entfernt, "
+        f"{report.tabellen} Tabellen mit {report.zeilen_chunks} Zeilen-Chunks"
     )
     for datei in report.dateien:
         print(_datei_zeile(datei))
@@ -103,9 +104,12 @@ def _index(pipeline: Pipeline) -> int:
 
 
 def _datei_zeile(datei: DateiBericht) -> str:
-    """One line per file: which strategy was chosen, and why (spec N4)."""
+    """One line per file: which strategy was chosen, and why (spec N4, V8)."""
     herkunft = "übersteuert" if datei.uebersteuert else datei.begruendung or "ohne Begründung"
-    return f"  {datei.quelle}: {datei.strategie} ({herkunft}), {datei.chunks} Abschnitte"
+    zeile = f"  {datei.quelle}: {datei.strategie} ({herkunft}), {datei.chunks} Abschnitte"
+    if datei.tabellen:
+        zeile += f", {datei.tabellen} Tabellen, {datei.zeilen_chunks} Zeilen-Chunks"
+    return zeile
 
 
 def _search(pipeline: Pipeline, question: str) -> int:

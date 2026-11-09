@@ -75,6 +75,24 @@ def test_pages_with_text_layer_do_not_use_the_hook(tmp_path: Path) -> None:
     assert calls == []
 
 
+def test_parser_warnungen_der_ocr_seite_stehen_im_bericht(tmp_path: Path) -> None:
+    _blank_pdf(tmp_path / "scan.pdf")
+
+    def hook(path: Path, page: int) -> OcrPage:
+        return OcrPage(
+            text="[scan, S. 1] Kopf: A | Zeile: 1",
+            vergleich="A 1",
+            ueberlappung=0.5,
+            warnungen=("Tabelle ohne erkennbare Kopfzeile",),
+        )
+
+    result = load_corpus(tmp_path, (".pdf",), ocr=hook)
+    assert any(
+        "scan.pdf" in warning and "Kopfzeile" in warning for warning in result.warnings
+    )
+
+
+
 def test_store_migrates_a_table_without_ocr_columns(tmp_path: Path) -> None:
     import lancedb
     import pyarrow as pa

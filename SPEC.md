@@ -990,8 +990,8 @@ Modellwechsel. Das erste Arbeitspaket ist deshalb die Formatprüfung an einer Se
 | 4 | Prüfschicht: Tabellenzeile als Aussage | 1 h |
 | 5 | Messung: Recall@10 auf dem Korpus, vorher/nachher | 1 h |
 
-**Status:** Entwurf 2026-11-08. Wartet auf Freigabe von D37–D41 und V1–V9.
-Kein Code vor der Freigabe.
+**Status:** Freigegeben 2026-11-09 (Auftrag „Führe das zuende“). Pakete 1–2 sind
+umgesetzt (Commit `528dd52`); Pakete 3–5 folgen in Abschnitt 11.15.
 
 #### Ergebnis Paket 1 (2026-11-09, llama-swap `paddleocr-vl`)
 
@@ -1020,3 +1020,63 @@ deutschen Betragsformat, 1 Datum, 7 reine Textfelder, ein Textfeld mit 362 Zeich
    in einem Durchgang zu verlangen, hat nicht funktioniert (Markdown-Prompt).
 4. **Geschwindigkeit reicht**: 3,4 s je Seite warm. `ix.26.13.pdf` mit 156 Seiten wäre
    damit in rund neun Minuten durch, nicht in zehn Stunden wie mit PP-StructureV3 auf CPU.
+
+---
+
+### 11.15 Pakete 3–5: Umsetzung (2026-11-09)
+
+Auftrag: „Führe das zuende“ nach Paket 1–2. Dieses Kapitel hält fest, wie V1–V9
+umgesetzt werden und welche Vertragspunkte sich dabei sichtbar ändern.
+
+#### Lesung und Index (V1, V9, Paket 3)
+
+- Die OCR-Strecke ruft `paddleocr-vl` mit dem Prompt `Table Recognition:` auf. Der
+  Probelauf (11.14) zeigt: dieser Prompt liefert OTSL, `OCR:` liefert Fließtext.
+- `ocr_lesung(dots_text, zweitmeinung)` ist eine reine Funktion. Erkennt
+  `otsl_zu_tabelle` eine Tabelle, ist die indizierte Lesung das Markdown dieser
+  Tabelle. Sonst ist die indizierte Lesung der dots-Text — das ist V9.
+- Die dots-Lesung steht weiter im Feld `ocr_paddle` und dient dem Vergleich. Die
+  Überlappung wird zwischen indizierter Lesung und dots-Lesung gerechnet.
+- Warnungen des Parsers (unbekanntes Token, fehlende Kopfzeile) gehen in den
+  Ladewarnungen auf; keine Warnung geht verloren (V2).
+
+#### Tabellen-Chunks (V3–V6, V8)
+
+- `tabellen_chunks(text, *, pfad, max_chars, kopf_zeilen, max_zeilen)` findet alle
+  Markdown-Tabellen und liefert ihre Chunks **mit Position im Dokumenttext**. Ohne
+  Position würde jede Tabelle auf Seite 1 liegen.
+- `tabellen_max_zeilen` (Default 200) schneidet eine längere Tabelle ab und schreibt
+  eine Warnung. Kein stilles Abschneiden.
+- Vor dem Chunking der Strategie `struktur` und `fenster` wird jeder Tabellenblock
+  durch Leerraum gleicher Länge ersetzt. Damit kann kein Fenster und kein Abschnitt
+  in eine Tabelle schneiden (V6), und der Tabellentext steht nur einmal im Index.
+  `qes` bleibt unverändert; die Strategie ist nur über `--strategie` erreichbar.
+- Der Bericht führt je Datei `tabellen` und `zeilen_chunks`; die CLI-Zeile nennt
+  beide Zahlen, wenn sie nicht null sind (V8).
+
+#### Prüfschicht (V7, Paket 4)
+
+- Eine Tabellenzeile ist eine **eigene Aussage**. `split_claims` trennt eine
+  Tabellenzeile nicht an Satzzeichen, sondern an der Zeile. Eine Zeile ohne
+  Satzende bleibt eine Aussage und wird nicht verworfen.
+- Nennt die erste Zeile eines Tabellenblocks eine Quelle, gilt diese Quelle für die
+  folgenden Zeilen desselben Blocks.
+- Folge: Eine falsche Zeile wird allein gestrichen; die belegten Zeilen bleiben.
+
+#### Vertragsänderung
+
+| Punkt | vorher | nachher |
+|---|---|---|
+| `ocr_paddle_prompt` | Default `OCR:` | Default `Table Recognition:` — der Probelauf hat den Prompt für die strukturierte Lesung festgelegt |
+| `tabellen_kopf_zeilen` | nicht vorhanden | Default 3 |
+| `tabellen_max_zeilen` | nicht vorhanden | Default 200, darüber Warnung |
+| V3 | Funktion `tabellen_chunks` geplant | `tabellen_chunks` liefert Chunks mit `start`/`ende` im Dokumenttext |
+| Fingerabdruck | ohne Tabellen-Schlüssel | enthält beide Tabellen-Schlüssel und `ocr_paddle_prompt` |
+
+#### Messung (Paket 5)
+
+Gemessen wird mit `scripts/messe_chunking.py` auf dem echten Korpus, je Strategie.
+Der Korpus hat auf allen Seiten eine Textebene; deshalb läuft dort keine OCR und es
+entstehen keine Tabellen-Chunks. Die Zahl für den Tabellenpfad kommt aus dem
+Bescheid-Bild (11.14) über `scripts/pruefe_tabellenpfad.py`.
+

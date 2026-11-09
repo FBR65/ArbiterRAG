@@ -7,9 +7,11 @@ import pytest
 from arbiter.tabellen import (
     Tabelle,
     markdown_zu_tabellen,
+    maskiere_tabellen,
     otsl_zu_tabelle,
     tabelle_zu_chunks,
     tabelle_zu_markdown,
+    tabellen_chunks,
 )
 
 BESCHEID = (
@@ -127,3 +129,40 @@ def test_jede_zeile_hat_gleich_viele_zellen(zeilen: int) -> None:
     tabelle = otsl_zu_tabelle(text)
     assert tabelle is not None
     assert all(len(zeile) == 3 for zeile in tabelle.zeilen)
+
+
+MARKDOWN_MIT_TEXT = (
+    "Vor der Tabelle steht ein Satz.\n\n"
+    "| Art | Betrag |\n| --- | --- |\n| Miete | 940,00 |\n| Strom | 80,00 |\n\n"
+    "Nach der Tabelle steht ein Satz.\n"
+)
+
+
+def test_tabellen_chunks_kennt_die_zeilen_und_ihre_position() -> None:
+    ergebnis = tabellen_chunks(
+        MARKDOWN_MIT_TEXT, max_chars=200, kopf_zeilen=0, max_zeilen=200
+    )
+    assert ergebnis.tabellen == 1
+    assert ergebnis.zeilen_chunks == 2
+    assert all("Kopf: Art, Betrag" in chunk.text for chunk in ergebnis.chunks)
+    for chunk in ergebnis.chunks:
+        assert chunk.start > 0, "ohne Position landet jede Tabelle auf Seite 1"
+        assert chunk.ende > chunk.start
+        assert MARKDOWN_MIT_TEXT[chunk.start : chunk.ende].startswith("| Art")
+
+
+def test_tabellen_chunks_meldet_die_obergrenze() -> None:
+    zeilen = "".join(f"| Posten {nummer} | {nummer},00 |\n" for nummer in range(5))
+    text = "| Art | Betrag |\n| --- | --- |\n" + zeilen
+    ergebnis = tabellen_chunks(text, max_chars=200, kopf_zeilen=0, max_zeilen=2)
+    assert ergebnis.zeilen_chunks == 2
+    assert any("Obergrenze" in warnung for warnung in ergebnis.warnungen)
+
+
+def test_maskiere_tabellen_haelt_die_laenge_und_entfernt_nur_die_tabelle() -> None:
+    maskiert = maskiere_tabellen(MARKDOWN_MIT_TEXT)
+    assert len(maskiert) == len(MARKDOWN_MIT_TEXT)
+    assert "|" not in maskiert
+    assert "Vor der Tabelle steht ein Satz." in maskiert
+    assert "Nach der Tabelle steht ein Satz." in maskiert
+    assert markdown_zu_tabellen(maskiert) == []

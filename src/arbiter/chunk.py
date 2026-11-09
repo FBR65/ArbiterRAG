@@ -11,7 +11,7 @@ from __future__ import annotations
 import itertools
 import re
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
@@ -68,6 +68,8 @@ class ChunkParameter:
     qe_fragen_max: int = 60
     qe_hits: int = 5
     qes_lambda: float = 0.0001
+    tabellen_kopf_zeilen: int = 3
+    tabellen_max_zeilen: int = 200
 
 
 @dataclass(frozen=True)
@@ -76,6 +78,8 @@ class Ergebnis:
     strategie: str
     auswahl: Auswahl | None = None
     warnungen: list[str] = field(default_factory=list)
+    tabellen: int = 0
+    zeilen_chunks: int = 0
 
 
 def chunk_text(text: str, max_chars: int = 1200, overlap: int = 100) -> list[str]:
@@ -176,23 +180,59 @@ def chunk_datei(
         return Ergebnis(chunks=[], strategie=strategie, auswahl=auswahl)
 
     warnungen: list[str] = []
+    # Tables are taken out before any prose chunker runs: no window and no section may
+    # cut into a table, and a row must not stand twice in the index (spec V6).
+    # Imported here: arbiter.tabellen imports Chunk from this module.
+    from arbiter.tabellen import TabellenErgebnis, maskiere_tabellen, tabellen_chunks
+
+    tabellen = TabellenErgebnis()
+    if strategie in ("struktur", "fenster"):
+        tabellen = tabellen_chunks(
+            text,
+            max_chars=parameter.max_chars,
+            kopf_zeilen=parameter.tabellen_kopf_zeilen,
+            max_zeilen=parameter.tabellen_max_zeilen,
+        )
+        warnungen.extend(f"{dateiname}: {warnung}" for warnung in tabellen.warnungen)
+    quelltext = maskiere_tabellen(text) if tabellen.tabellen else text
+
     if strategie == "struktur":
-        chunks = _struktur_chunks(text, parameter)
+        chunks = _struktur_chunks(quelltext, parameter)
     elif strategie == "qes":
-        qes_chunks = _qes_chunks(text, dateiname, parameter, qe_quelle, embedder, warnungen)
+        qes_chunks = _qes_chunks(quelltext, dateiname, parameter, qe_quelle, embedder, warnungen)
         if qes_chunks is None:
             strategie = "fenster"
-            chunks = chunk_fenster(text, parameter.max_chars, parameter.overlap)
+            chunks = chunk_fenster(quelltext, parameter.max_chars, parameter.overlap)
         else:
             chunks = qes_chunks
     else:
-        chunks = chunk_fenster(text, parameter.max_chars, parameter.overlap)
+        chunks = chunk_fenster(quelltext, parameter.max_chars, parameter.overlap)
 
     if not chunks:
         # Markers the splitter drops must not make a document disappear from the
         # index; the window splitter keeps it searchable.
-        chunks = chunk_fenster(text, parameter.max_chars, parameter.overlap)
-    return Ergebnis(chunks=chunks, strategie=strategie, auswahl=auswahl, warnungen=warnungen)
+        chunks = chunk_fenster(quelltext, parameter.max_chars, parameter.overlap)
+    if tabellen.tabellen:
+        chunks = [replace(chunk, text=_entferne_masken(chunk.text)) for chunk in chunks]
+    chunks = sorted([*chunks, *tabellen.chunks], key=lambda chunk: (chunk.start, chunk.ende))
+    return Ergebnis(
+        chunks=chunks,
+        strategie=strategie,
+        auswahl=auswahl,
+        warnungen=warnungen,
+        tabellen=tabellen.tabellen,
+        zeilen_chunks=tabellen.zeilen_chunks,
+    )
+
+
+def _entferne_masken(text: str) -> str:
+    """Collapse the whitespace a masked table leaves behind (spec V6).
+
+    The table text itself lives in its row chunks. A paragraph chunk that ran over the
+    table must not carry thousands of spaces into the index and into the embedding.
+    """
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
 def _struktur_chunks(text: str, parameter: ChunkParameter) -> list[Chunk]:

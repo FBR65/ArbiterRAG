@@ -58,3 +58,49 @@ def test_fenster_chunks_tragen_ihren_text_wortgleich() -> None:
         # auf den Leerraum davor; sonst waere sie fuer die Seitenzuordnung wertlos.
         assert not text[chunk.start].isspace()
         assert not text[chunk.ende - 1].isspace()
+
+
+TABELLENTEXT = (
+    "1 Rechnung\n"
+    "Die Rechnung nennt mehrere Posten.\n\n"
+    "| Art | Betrag |\n| --- | --- |\n"
+    "| Miete | 940,00 |\n| Strom | 80,00 |\n| Gas | 60,00 |\n"
+    "| Wasser | 40,00 |\n| Heizung | 120,00 |\n\n"
+    "1.1 Zahlung\n"
+    "Die Zahlung ist am Ersten faellig.\n"
+)
+
+
+def test_struktur_chunks_schneiden_nicht_in_eine_tabelle() -> None:
+    ergebnis = chunk_datei(TABELLENTEXT, "rechnung.txt", ChunkParameter(strategie="struktur"))
+    tabellen = [chunk for chunk in ergebnis.chunks if chunk.strategie == "tabelle"]
+    uebrige = [chunk for chunk in ergebnis.chunks if chunk.strategie != "tabelle"]
+    # Kopf-Chunk mit drei Zeilen, danach eine eigene Aussage je Zeile (V3, D39).
+    assert len(tabellen) == 3
+    assert all("|" not in chunk.text for chunk in uebrige)
+    assert not any("Miete" in chunk.text for chunk in uebrige)
+
+
+def test_tabellen_zeilen_tragen_ihre_position_im_dokument() -> None:
+    ergebnis = chunk_datei(TABELLENTEXT, "rechnung.txt", ChunkParameter(strategie="fenster"))
+    tabellen = [chunk for chunk in ergebnis.chunks if chunk.strategie == "tabelle"]
+    assert tabellen
+    start = TABELLENTEXT.index("| Art")
+    for chunk in tabellen:
+        assert chunk.start >= start
+        assert TABELLENTEXT[chunk.start : chunk.ende].startswith("| Art")
+
+
+def test_der_bericht_zaehlt_tabellen_und_zeilen_chunks() -> None:
+    ergebnis = chunk_datei(TABELLENTEXT, "rechnung.txt", ChunkParameter(strategie="struktur"))
+    assert ergebnis.tabellen == 1
+    assert ergebnis.zeilen_chunks == 2
+
+
+def test_prosachunk_traegt_keine_maskenreste() -> None:
+    ergebnis = chunk_datei(TABELLENTEXT, "rechnung.txt", ChunkParameter(strategie="struktur"))
+    for chunk in ergebnis.chunks:
+        if chunk.strategie == "tabelle":
+            continue
+        assert "   " not in chunk.text
+

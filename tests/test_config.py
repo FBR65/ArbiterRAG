@@ -47,6 +47,23 @@ def test_loads_minimal_config_with_defaults(tmp_path: Path) -> None:
     assert rag.gate_schwelle == 0.5
     assert rag.chunk_chars == 600
     assert rag.gate_kandidaten == 5
+    # SPEC 11.15: Tabellen-Chunking und der Prompt der strukturierten Lesung.
+    assert rag.tabellen_kopf_zeilen == 3
+    assert rag.tabellen_max_zeilen == 200
+    assert rag.ocr_paddle_prompt == "Table Recognition:"
+
+
+def test_tabellen_schluessel_werden_gelesen(tmp_path: Path) -> None:
+    text = MINIMAL.replace(
+        '    extensions: [".pdf"]\n',
+        '    extensions: [".pdf"]\n'
+        "    tabellen_kopf_zeilen: 1\n"
+        "    tabellen_max_zeilen: 50\n"
+        "    ocr_paddle_prompt: \"Table Recognition:\"\n",
+    )
+    rag = load_config(_write(tmp_path, text), _env()).rags["miethaus"]
+    assert rag.tabellen_kopf_zeilen == 1
+    assert rag.tabellen_max_zeilen == 50
 
 
 def test_missing_required_field_names_field_and_file(tmp_path: Path) -> None:

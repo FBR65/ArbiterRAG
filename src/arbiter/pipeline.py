@@ -30,11 +30,23 @@ from arbiter.loaders import Document, OcrHook, OcrPage, load_corpus
 from arbiter.ocr import VisionOcr, dots_to_text, render_png, word_overlap
 from arbiter.rerank import RerankClient
 from arbiter.store import Hit, Record, Store
+from arbiter.tabellen import otsl_zu_tabelle, tabelle_zu_markdown
 
 MAX_FRAGE_ZEICHEN = 2000
 EMBED_BATCH = 32
-# PaddleOCR-VL is task-prompted; "OCR:" is the task switch for plain text.
-PADDLE_PROMPT = "OCR:"
+
+
+def ocr_lesung(dots_text: str, zweitmeinung: str) -> tuple[str, list[str]]:
+    """The text of one OCR page: structured when a table was recognised (spec V1, V9).
+
+    ``paddleocr-vl`` answers the table prompt with OTSL. If that yields a table, the
+    Markdown of that table is what goes into the index — that is what produces row
+    chunks. Without a table the dots reading stays, exactly as before.
+    """
+    tabelle = otsl_zu_tabelle(zweitmeinung)
+    if tabelle is None:
+        return dots_text, []
+    return tabelle_zu_markdown(tabelle), list(tabelle.warnungen)
 
 
 class QuestionTooLong(Exception):
@@ -86,6 +98,8 @@ class DateiBericht:
     kennzahlen: Kennzahlen | None
     chunks: int
     begruendung: str = ""
+    tabellen: int = 0
+    zeilen_chunks: int = 0
 
 
 @dataclass
@@ -99,6 +113,8 @@ class IndexReport:
     duplicates: int = 0
     unchanged: int = 0
     entfernt: int = 0
+    tabellen: int = 0
+    zeilen_chunks: int = 0
     warnings: list[str] = field(default_factory=list)
     dateien: list[DateiBericht] = field(default_factory=list)
 
@@ -244,8 +260,12 @@ class Pipeline:
                 kennzahlen=ergebnis.auswahl.kennzahlen if ergebnis.auswahl else None,
                 chunks=len(ergebnis.chunks),
                 begruendung=ergebnis.auswahl.begruendung if ergebnis.auswahl else "",
+                tabellen=ergebnis.tabellen,
+                zeilen_chunks=ergebnis.zeilen_chunks,
             )
             report.dateien.append(datei)
+            report.tabellen += ergebnis.tabellen
+            report.zeilen_chunks += ergebnis.zeilen_chunks
             for number, chunk in enumerate(ergebnis.chunks, start=1):
                 seite = seite_bei(anfaenge, chunk.start)
                 seite_ende = seite_bei(anfaenge, max(chunk.ende - 1, chunk.start))
@@ -636,6 +656,8 @@ class Pipeline:
             qe_fragen_max=rag.qe_fragen_max,
             qe_hits=rag.qe_hits,
             qes_lambda=rag.qes_lambda,
+            tabellen_kopf_zeilen=rag.tabellen_kopf_zeilen,
+            tabellen_max_zeilen=rag.tabellen_max_zeilen,
         )
 
     def _qe_quelle(self) -> Callable[[str], list[QePaar]] | None:
@@ -667,6 +689,9 @@ class Pipeline:
                 rag.ocr_alle_seiten,
                 rag.ocr_dpi,
                 rag.ocr_dpi_paddle,
+                rag.ocr_paddle_prompt,
+                rag.tabellen_kopf_zeilen,
+                rag.tabellen_max_zeilen,
                 rag.sprache,
                 self.config.backends.ocr_dots_model,
                 self.config.backends.ocr_paddle_model,
@@ -686,15 +711,19 @@ class Pipeline:
 
         def hook(path: Path, page_number: int) -> OcrPage:
             # Both engines get their own rendering, as in DocPipeline: dots reads the
-            # layout at 200 dpi, paddle reads the text at 300 dpi with its own prompt.
+            # layout at 200 dpi, paddle reads the table structure at 300 dpi.
             png_dots = render_png(path, page_number, dpi_dots)
-            indexed = dots_to_text(dots.text_from_png(png_dots))
+            dots_text = dots_to_text(dots.text_from_png(png_dots))
             png_paddle = render_png(path, page_number, dpi_paddle)
-            zweitmeinung = paddle.text_from_png(png_paddle, prompt=PADDLE_PROMPT)
+            zweitmeinung = paddle.text_from_png(png_paddle, prompt=self.rag.ocr_paddle_prompt)
+            # The structured reading is what goes into the index; the dots reading stays
+            # beside it as the comparison (spec V1).
+            indexed, warnungen = ocr_lesung(dots_text, zweitmeinung)
             return OcrPage(
                 text=indexed,
-                vergleich=zweitmeinung,
-                ueberlappung=word_overlap(indexed, zweitmeinung),
+                vergleich=dots_text,
+                ueberlappung=word_overlap(indexed, dots_text),
+                warnungen=tuple(warnungen),
             )
 
         return hook

@@ -69,6 +69,9 @@ class Rag:
     qe_hits: int = 5
     qes_lambda: float = 0.0001
     qe_model: str = ""
+    tabellen_kopf_zeilen: int = 3
+    tabellen_max_zeilen: int = 200
+    ocr_paddle_prompt: str = "Table Recognition:"
 
 
 @dataclass(frozen=True)
@@ -123,6 +126,9 @@ _RAG_KEYS = {
     "qe_hits",
     "qes_lambda",
     "qe_model",
+    "tabellen_kopf_zeilen",
+    "tabellen_max_zeilen",
+    "ocr_paddle_prompt",
 }
 _REQUIRED_BACKENDS = {
     "base_url",
@@ -248,6 +254,9 @@ def _rag(name: str, entry: Any, filename: str) -> Rag:
         qe_hits=int(entry.get("qe_hits", 5)),
         qes_lambda=float(entry.get("qes_lambda", 0.0001)),
         qe_model=str(entry.get("qe_model", "")),
+        tabellen_kopf_zeilen=int(entry.get("tabellen_kopf_zeilen", 3)),
+        tabellen_max_zeilen=int(entry.get("tabellen_max_zeilen", 200)),
+        ocr_paddle_prompt=str(entry.get("ocr_paddle_prompt", "Table Recognition:")),
     )
 
 

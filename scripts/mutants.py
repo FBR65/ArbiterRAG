@@ -135,10 +135,16 @@ MUTANTS = [
         "        if not nummer or nummer in gesehen:",
     ),
     Mutant(
-        "entscheider-schwelle-ignoriert",
+        "fenster-chunk-verliert-seine-position",
+        "src/arbiter/chunk.py",
+        "                    start=links,\n                    ende=rechts,",
+        "                    start=start,\n                    ende=rechts,",
+    ),
+    Mutant(
+        "entscheider-erkennt-eine-ueberschrift-als-struktur",
         "src/arbiter/chunk_choice.py",
-        '        strategie="struktur" if punktzahl >= schwelle else "qes",',
-        '        strategie="struktur",',
+        "    return len(_abschnitts_laengen(text)) >= 2",
+        "    return len(_abschnitts_laengen(text)) >= 1",
     ),
     Mutant(
         "entscheider-zaehlt-riesenabschnitte",
@@ -151,12 +157,6 @@ MUTANTS = [
         "src/arbiter/chunk.py",
         '    if strategie == "auto":',
         "    if True:",
-    ),
-    Mutant(
-        "fenster-chunk-verliert-seine-position",
-        "src/arbiter/chunk.py",
-        "                    start=links,\n                    ende=rechts,",
-        "                    start=start,\n                    ende=rechts,",
     ),
     Mutant(
         "seitenzuordnung-immer-seite-eins",
@@ -227,6 +227,42 @@ MUTANTS = [
         "src/arbiter/chunk_qe.py",
         "            if not all(_steht_im_text(beleg, saetze) for beleg in paar.belege):",
         "            if False:",
+    ),
+    Mutant(
+        "tabellen-zeile-ohne-kopfzeile",
+        "src/arbiter/tabellen.py",
+        '    kopfzeile = "Kopf: " + (", ".join(tabelle.kopf) if tabelle.kopf else "unbekannt")',
+        '    kopfzeile = ""',
+    ),
+    Mutant(
+        "tabellen-chunk-ohne-position",
+        "src/arbiter/tabellen.py",
+        "            chunks.append(replace(chunk, start=block.start, ende=block.ende))",
+        "            chunks.append(replace(chunk, start=0, ende=0))",
+    ),
+    Mutant(
+        "tabellen-obergrenze-ignoriert",
+        "src/arbiter/tabellen.py",
+        "        if max_zeilen > 0 and len(tabelle.zeilen) > max_zeilen:",
+        "        if False:",
+    ),
+    Mutant(
+        "tabellen-nicht-aus-dem-prosatext-entfernt",
+        "src/arbiter/chunk.py",
+        "    quelltext = maskiere_tabellen(text) if tabellen.tabellen else text",
+        "    quelltext = text",
+    ),
+    Mutant(
+        "ocr-lesung-ignoriert-die-tabelle",
+        "src/arbiter/pipeline.py",
+        "    if tabelle is None:\n        return dots_text, []",
+        "    if True:\n        return dots_text, []",
+    ),
+    Mutant(
+        "claim-verschmilzt-tabellenzeilen",
+        "src/arbiter/check.py",
+        "    return [zeile.strip() for zeile in satz.splitlines() if zeile.strip()]",
+        "    return [satz.strip()]",
     ),
 ]
 

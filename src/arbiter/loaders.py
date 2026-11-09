@@ -30,6 +30,7 @@ class OcrPage:
     text: str
     vergleich: str
     ueberlappung: float
+    warnungen: tuple[str, ...] = ()
 
 
 OcrHook = Callable[[Path, int], OcrPage]
@@ -269,6 +270,11 @@ def _ocr_page(
     if not page.text.strip():
         result.warnings.append(f"{relative}, Seite {number}: OCR lieferte keinen Text")
         return None
+    # Warnungen des Parsers (unbekanntes Tabellen-Token, fehlende Kopfzeile) dürfen
+    # nicht still verschwinden (spec V2).
+    result.warnings.extend(
+        f"{relative}, Seite {number}: {warnung}" for warnung in page.warnungen
+    )
     return Document(
         quelle=relative,
         seite=number,

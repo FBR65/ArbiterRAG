@@ -32,25 +32,43 @@ def ist_meta(satz: str) -> bool:
 
 _QUELLE = re.compile(r"\[([^\]]+),\s*S\.\s*(\d+)\]")
 
+# A table row is a statement of its own (spec V7). It carries the header and one row
+# of values and never ends with a period, so the sentence splitter would lump several
+# rows into one claim — one wrong row would then silence every right one.
+_TABELLENZEILE = re.compile(r"^\s*(?:\[[^\]]*\]\s*)?(?:Kopf:|Zeile:|\|)")
+
+
+def ist_tabellenzeile(zeile: str) -> bool:
+    """True for a chunk line that represents a table row (spec V7)."""
+    return bool(_TABELLENZEILE.match(zeile))
+
 
 def split_claims(text: str) -> list[tuple[str, str | None, int | None]]:
     """Split an answer into claims with the source each one names.
 
     Returns ``(claim, quelle, seite)``. A sentence without a citation keeps ``None``
     for both — such a claim has no source and cannot be checked, which counts as
-    unsupported.
+    unsupported. A table row is its own claim; a citation on the first row of a block
+    carries to the rows below it, which belong to the same block.
     """
     claims: list[tuple[str, str | None, int | None]] = []
     for satz in _SATZ.split(text.strip()):
-        satz = satz.strip()
-        if not satz:
-            continue
-        treffer = _QUELLE.search(satz)
-        if treffer is None:
-            claims.append((satz, None, None))
-        else:
-            claims.append((satz, treffer.group(1).strip(), int(treffer.group(2))))
+        quelle: str | None = None
+        seite: int | None = None
+        for teil in _zerlegen(satz):
+            treffer = _QUELLE.search(teil)
+            if treffer is not None:
+                quelle = treffer.group(1).strip()
+                seite = int(treffer.group(2))
+            claims.append((teil, quelle, seite))
     return claims
+
+
+def _zerlegen(satz: str) -> list[str]:
+    """The claims of one sentence span: table rows stay apart (spec V7)."""
+    if not any(ist_tabellenzeile(zeile) for zeile in satz.splitlines()):
+        return [satz.strip()] if satz.strip() else []
+    return [zeile.strip() for zeile in satz.splitlines() if zeile.strip()]
 
 
 def build_claim_prompt(claim: str, passage: str) -> tuple[str, str]:

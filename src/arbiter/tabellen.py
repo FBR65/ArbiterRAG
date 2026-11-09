@@ -122,7 +122,11 @@ def tabelle_zu_markdown(tabelle: Tabelle) -> str:
 
 
 def _zeile_md(zellen: tuple[str, ...]) -> str:
-    return "| " + " | ".join(zelle.replace("|", "/") for zelle in zellen) + " |"
+    # A cell may carry a line break (measured on a tax notice: one field held 362
+    # characters over several lines). Inside a Markdown row it would split the row and
+    # lose it on the way back, so the break becomes a space. A pipe becomes "/".
+    sauber = [zelle.replace("|", "/").replace("\r", " ").replace("\n", " ") for zelle in zellen]
+    return "| " + " | ".join(sauber) + " |"
 
 
 def _auffuellen(zeile: tuple[str, ...], breite: int) -> tuple[str, ...]:

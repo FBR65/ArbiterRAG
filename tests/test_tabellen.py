@@ -67,6 +67,20 @@ def test_tabelle_zu_markdown() -> None:
     assert "| Miete | 940,00 |" in text
 
 
+def test_zellinhalt_mit_zeilenumbruch_bleibt_eine_zeile() -> None:
+    # Ein Zellinhalt mit Umbruch zerlegte die Zeile in zwei Zeilen; die Tabelle waere
+    # beim Wiedereinlesen kuerzer und die Zeile verloren.
+    tabelle = Tabelle(
+        kopf=("Art", "Hinweis"),
+        zeilen=[("Miete", "erste Zeile\nzweite Zeile"), ("Strom", "80,00")],
+    )
+    text = tabelle_zu_markdown(tabelle)
+    assert len(text.splitlines()) == 4
+    zurueck = markdown_zu_tabellen(text)
+    assert len(zurueck) == 1
+    assert len(zurueck[0].zeilen) == 2
+
+
 def test_markdown_tabelle_wird_gefunden() -> None:
     text = "Einleitung\n\n| Art | Betrag |\n| --- | --- |\n| Miete | 940,00 |\n\nDanach Text."
     tabellen = markdown_zu_tabellen(text)

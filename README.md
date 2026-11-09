@@ -21,10 +21,11 @@ called at query time.
 | Reranking via `/v1/rerank` | implemented |
 | Gate: one yes/no decision per candidate, read from logprobs | implemented |
 | Answer generation with per-sentence support check | implemented |
+| Article-aware chunking: `struktur`, `qes`, `fenster`, automatic decider | implemented |
+| Table chunking from structured OCR (OTSL) | implemented |
 | HTTP service (FastAPI) | implemented |
 | Terminal UI | implemented |
 | Goldset evaluation | implemented |
-| Article-aware chunking | not implemented |
 | Calibrated sentence check | not implemented |
 
 The status is meant literally. Section "Measured results" lists what was measured and
@@ -69,7 +70,8 @@ Two properties define the design:
   - `bge-m3-gguf` — embeddings (`/v1/embeddings`)
   - `bge-reranker-v2-m3` — reranking (`/v1/rerank`, needs `--reranking`)
   - `qwen2.5-7b-instruct` — gate and answer (`/v1/chat/completions`, needs `logprobs`)
-  - `dots-mocr` and `paddleocr-vl` — OCR, only with `ocr_alle_seiten: true`
+  - `paddleocr-vl` — structured reading of scanned pages; a table prompt returns OTSL
+  - `dots-mocr` — layout reading of the same page, kept as the comparison
 - About 8 GB of GPU memory when all models are resident.
 
 ## Install
@@ -93,8 +95,8 @@ unknown keys are an error, so a typo never silently changes nothing.
 | `backends.embed_model` | — | embeddings model |
 | `backends.rerank_model` | — | reranking model |
 | `backends.chat_model` | — | gate and answer model |
-| `backends.ocr_dots_model` | — | OCR model that supplies the indexed text |
-| `backends.ocr_paddle_model` | — | OCR second opinion |
+| `backends.ocr_dots_model` | — | layout reading, kept as the comparison |
+| `backends.ocr_paddle_model` | — | structured reading; its table text is indexed |
 | `rags.<name>.corpus_path` | — | root directory of the corpus |
 | `rags.<name>.extensions` | — | `[".pdf"]`, `[".txt", ".pdf"]`, ... |
 | `rags.<name>.top_k_dense` | 20 | dense candidates |
@@ -110,6 +112,9 @@ unknown keys are an error, so a typo never silently changes nothing.
 | `rags.<name>.ocr_alle_seiten` | false | OCR every page, not only pages without a text layer |
 | `rags.<name>.ocr_dpi` | 200 | rendering resolution for `dots-mocr` |
 | `rags.<name>.ocr_dpi_paddle` | 300 | rendering resolution for `paddleocr-vl` |
+| `rags.<name>.ocr_paddle_prompt` | `Table Recognition:` | task prompt for the structured reading |
+| `rags.<name>.tabellen_kopf_zeilen` | 3 | rows in the table head chunk |
+| `rags.<name>.tabellen_max_zeilen` | 200 | row limit per table; above it a warning is reported |
 | `rags.<name>.eltern_seite` | false | index small chunks, return the whole page as context |
 | `rags.<name>.gate_kandidaten` | 5 | candidates the gate sees |
 | `rags.<name>.gate_schwelle` | 0.5 | P(ja) needed for admission |
@@ -182,6 +187,57 @@ Other properties:
 - With `sprache: de`, documents in another language are skipped and named in the report.
 - Every chunk carries a header `[file name, page n]`, so the source is visible in the
   text itself.
+- The report names, per file, the chosen strategy, the reason, and — when tables were
+  found — the number of tables and row chunks.
+
+## Chunking
+
+Four strategies exist; `chunk_strategie` selects one, `auto` is the default.
+
+| Strategy | What it does | When it wins |
+|---|---|---|
+| `struktur` | one chunk per section, with the heading path as a breadcrumb; long sections are packed at sentence ends; cross-references are resolved into the chunk | documents with headings and numbered clauses |
+| `fenster` | fixed windows of `chunk_chars`, snapped to paragraph boundaries, with overlap | flowing text, letters, protocols |
+| `qes` | question-evidence supervision: generated questions pull the sentences they need into one chunk | only reachable via `--strategie qes`; measured worse than `fenster` on every file of the corpus and 2.6 times the index |
+| `auto` | binary structure detector: two or more headings → `struktur`, otherwise `fenster`. No score, no threshold | default |
+
+Measured on the five-document German corpus, dense retrieval, complete-evidence
+recall@10 of the goldset:
+
+| Strategy | Chunks | Index (characters) | Recall@10 |
+|---|---|---|---|
+| `fenster` (previous state) | 1511 | 943 914 | 0.538 |
+| `struktur` | 1643 | 860 839 | **0.692** |
+| `qes` | 6180 | 2 469 004 | 0.538 |
+| `auto` (detector) | 1643 | 860 839 | **0.692** |
+
+The detector chose `struktur` for four files and `fenster` for the one separator sheet
+without headings: the value of the best measured strategy, with no configuration key
+and a smaller index than before. The limit that remains: the number of competing chunks
+a file contributes differs per splitter, and the detector measures the shape of the
+document, not the retrieval result.
+
+## Tables
+
+Scanned pages are read twice: `paddleocr-vl` answers the table prompt with OTSL (Open
+Table Structure Language, `<fcel>` cell, `<ecel>` empty cell, `<lcel>`/`<ucel>`/`<xcel>`
+joined cell, `<nl>` row end), `dots-mocr` supplies the layout reading. When the OTSL
+answer parses into a table, the Markdown of that table is what is indexed; otherwise the
+dots reading stays. Both readings are kept, and parser warnings (unknown token, no
+recognised header) appear in the report.
+
+A table becomes one head chunk (header line plus up to `tabellen_kopf_zeilen` rows) and
+one chunk per further row, of the form
+`Kopf: Betrag, Datum, Posten | Zeile: 940,00, 01.04.2026, Miete`. Every row carries its
+header, and a wide row is split at cell borders with the header repeated. Before the
+prose chunkers run, each table block is replaced by whitespace of the same length, so no
+window and no section can cut into a table. The row chunks keep their position in the
+document text, which is what assigns them to the right page; without it every row would
+be filed under page 1.
+
+An OTSL table is a flat grid: the probe on a tax notice returned 13 rows and 5 columns
+with 23 joined cells. A Markdown table without a header separator is not guessed at —
+its chunks say `Kopf: unbekannt` and the report carries a warning.
 
 ## Retrieval and reranking
 
@@ -230,6 +286,12 @@ If nothing survives, the source is quoted verbatim — a quotation cannot be inv
 A refusal never carries sources; the checked pages appear in the warnings as
 "geprüft, nicht ausreichend".
 
+A table row is a statement of its own: it carries the header and one row of values and
+does not end with a period, so the sentence splitter would otherwise merge several rows
+into one claim — one wrong row would silence every right one. A citation on the first
+row of a block applies to the rows below it.
+
+
 ## Measured results
 
 All numbers below come from runs against the running models on a five-document German
@@ -253,9 +315,17 @@ failures are documented in `docs/EVIDENCE-verbesserungen.md`, section J.
 
 - **The sentence check is not calibrated.** Its false-accept rate is unknown. It both
   drops correct statements and lets wrong ones through.
-- **Chunking ignores document structure.** 600-character windows cross page and article
-  boundaries. Article-aware chunking is the next step; a different window size was
-  measured and changed nothing.
+- **Table chunks need a scanned page.** They come from the OCR path, which runs on pages
+  without a text layer (`ocr_alle_seiten: false`, the default). A digital PDF with a
+  table keeps its text layer; the table is not turned into row chunks there. Table
+  detection without full OCR (lines and rectangles from the PDF) is an open item in the
+  SPEC, decision D38.
+- **The table prompt is unconditional.** `paddleocr-vl` answers `Table Recognition:` on
+  any page. Measured on a textless separator sheet without a table: it returned a table
+  with a header and no rows, and the page was indexed as one head chunk. That is the
+  price of D38 being open; a page without a table is not recognised as such.
+- **The structure chunker is line-based.** It reads headings, numbered clauses and
+  paragraphs, not layout. A two-column PDF whose text order is wrong stays wrong.
 - **OCR is expensive.** Roughly 75 s per page with both models at 200 and 300 dpi, so a
   156-page document takes about 3.3 hours on first ingest.
 - **The goldset is small.** 31 questions originally, 21 after restricting the corpus to
@@ -289,7 +359,11 @@ every measurement, including the ones that failed.
 src/arbiter/
   config.py      YAML, ${VAR} expansion, unknown keys are errors
   loaders.py     PDF via pypdfium2 (pypdf fallback), text, duplicates, language filter
-  chunk.py       chunking with paragraph boundaries and overlap
+  chunk.py       strategy switch: struktur, qes, fenster; table blocks taken out first
+  chunk_structure.py  headings, sections, breadcrumbs, cross-references
+  chunk_choice.py     binary structure detector (auto)
+  chunk_qes.py        question-evidence chunking
+  tabellen.py    OTSL parser, Markdown tables, row chunks
   embedding.py   dense vectors via /v1/embeddings
   store.py       LanceDB: vectors, full-text index, file fingerprints
   fusion.py      reciprocal rank fusion

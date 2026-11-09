@@ -76,3 +76,26 @@ def test_ensure_fts_is_idempotent(tmp_path: Path) -> None:
     store = _store(tmp_path)
     store.ensure_fts("miethaus")
     assert store.count("miethaus") == 2
+
+
+def test_geaenderte_strategie_wird_neu_geschrieben(tmp_path: Path) -> None:
+    # Gleicher Text, andere Strategie: der Text-Hash allein liesse die alte Zeile mit
+    # leerer Strategie stehen. Der Bericht wuerde dann eine Strategie nennen, die in
+    # der Zeile nicht steht.
+    store = _store(tmp_path)
+    alt = _record("a#1", "Die Miete betraegt 900 Euro", [1, 0, 0, 0])
+    neu = Record(
+        id=alt.id,
+        text=alt.text,
+        quelle=alt.quelle,
+        seite=alt.seite,
+        hash=alt.hash,
+        vector=alt.vector,
+        strategie="struktur",
+    )
+    assert store.upsert("miethaus", [neu]) == 1
+    rows = store._table("miethaus").to_arrow().to_pylist()
+    zeile = next(row for row in rows if row["id"] == "a#1")
+    assert zeile["strategie"] == "struktur"
+    assert store.count("miethaus") == 2
+

@@ -67,7 +67,10 @@ class Store:
 
         dim = self._resolve_dim(batch)
         table = self._table_or_create(rag, dim)
-        existing = {row["id"]: row["hash"] for row in table.to_arrow().to_pylist()}
+        existing = {
+            row["id"]: (row["hash"], str(row.get("strategie", "") or ""))
+            for row in table.to_arrow().to_pylist()
+        }
 
         by_quelle: dict[str, list[Record]] = {}
         for record in batch:
@@ -80,7 +83,11 @@ class Store:
             stale.extend(
                 rid for rid in existing if rid.startswith(f"{quelle}#") and rid not in keep
             )
-            changed.extend(record for record in group if existing.get(record.id) != record.hash)
+            changed.extend(
+                record
+                for record in group
+                if existing.get(record.id) != (record.hash, record.strategie)
+            )
 
         self._delete(table, sorted(set(stale) | {r.id for r in changed}))
         if changed:

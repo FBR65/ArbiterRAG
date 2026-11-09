@@ -111,6 +111,7 @@ _RAG_KEYS = {
     "fts_stem",
     "gate_prompt",
     "gate_kandidaten",
+    "gate_schwelle",
     "antwort_passagen",
     "antwort_pruefung",
     "antwort_schwelle",

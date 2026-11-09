@@ -59,11 +59,29 @@ def test_tabellen_schluessel_werden_gelesen(tmp_path: Path) -> None:
         '    extensions: [".pdf"]\n'
         "    tabellen_kopf_zeilen: 1\n"
         "    tabellen_max_zeilen: 50\n"
-        "    ocr_paddle_prompt: \"Table Recognition:\"\n",
+        '    ocr_paddle_prompt: "Table Recognition:"\n',
     )
     rag = load_config(_write(tmp_path, text), _env()).rags["miethaus"]
     assert rag.tabellen_kopf_zeilen == 1
     assert rag.tabellen_max_zeilen == 50
+
+
+def test_gate_schwelle_wird_gelesen(tmp_path: Path) -> None:
+    text = MINIMAL.replace(
+        '    extensions: [".pdf"]\n',
+        '    extensions: [".pdf"]\n    gate_schwelle: 0.7\n',
+    )
+    assert load_config(_write(tmp_path, text), _env()).rags["miethaus"].gate_schwelle == 0.7
+
+
+def test_jedes_feld_der_rag_klasse_ist_ein_erlaubter_schluessel() -> None:
+    # Sonst ist ein Feld im Code vorhanden, aber in der YAML nicht setzbar: der
+    # Schluessel wird als Tippfehler abgelehnt. Genau das war bei gate_schwelle der Fall.
+    from dataclasses import fields
+
+    from arbiter.config import _RAG_KEYS, Rag
+
+    assert {feld.name for feld in fields(Rag)} - {"name"} <= _RAG_KEYS
 
 
 def test_missing_required_field_names_field_and_file(tmp_path: Path) -> None:

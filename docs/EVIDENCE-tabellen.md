@@ -47,7 +47,7 @@ Zeile beim Schreiben des Markdowns.
 
 | Ebene | Befehl | Ergebnis |
 |---|---|---|
-| Testsuite | `uv run pytest` | 252 Tests, alle grün |
+| Testsuite | `uv run pytest` | 254 Tests, alle grün |
 | Lint | `uv run ruff check .` | keine Meldung |
 | Typen | `uv run mypy` | keine Meldung in 25 Dateien |
 | Abdeckung | `uv run pytest --cov=arbiter --cov-report=term-missing` | gesamt 87 %, `tabellen.py` 96 %, `chunk.py` 99 %, `check.py` 88 %, `store.py` 92 % |

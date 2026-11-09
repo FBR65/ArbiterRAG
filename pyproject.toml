@@ -1,7 +1,7 @@
 [project]
 name = "arbiterrag"
 version = "0.1.0"
-description = "RAG with HyDE, reranking and a typed-decision gate (Laya) on top"
+description = "RAG over a local corpus with hybrid retrieval, reranking and a logprob gate"
 requires-python = ">=3.12,<3.13"
 license = { text = "MIT" }
 dependencies = [

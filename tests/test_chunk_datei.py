@@ -104,3 +104,11 @@ def test_prosachunk_traegt_keine_maskenreste() -> None:
             continue
         assert "   " not in chunk.text
 
+
+def test_datei_aus_nur_einer_tabelle_bleibt_im_index() -> None:
+    # Der maskierte Text ist leer; ohne den Tabellen-Chunk waere die Datei weg.
+    text = "| Art | Betrag |\n| --- | --- |\n| Miete | 940,00 |\n"
+    ergebnis = chunk_datei(text, "tabelle.txt", ChunkParameter(strategie="struktur"))
+    assert ergebnis.chunks
+    assert all(chunk.strategie == "tabelle" for chunk in ergebnis.chunks)
+

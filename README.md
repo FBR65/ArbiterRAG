@@ -336,10 +336,10 @@ failures are documented in `docs/EVIDENCE-verbesserungen.md`, section J.
 ## Testing
 
 ```bash
-uv run pytest                    # 144 tests
+uv run pytest                    # 252 tests
 uv run ruff check .              # lint
 uv run mypy                      # types
-uv run python scripts/mutants.py # mutation run, 15 mutants
+uv run python scripts/mutants.py # mutation run, 39 mutants
 ```
 
 The tests need no model: the HTTP layer is faked, the gate takes an injected logprob

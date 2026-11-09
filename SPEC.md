@@ -1075,8 +1075,23 @@ umgesetzt werden und welche Vertragspunkte sich dabei sichtbar ändern.
 
 #### Messung (Paket 5)
 
-Gemessen wird mit `scripts/messe_chunking.py` auf dem echten Korpus, je Strategie.
-Der Korpus hat auf allen Seiten eine Textebene; deshalb läuft dort keine OCR und es
-entstehen keine Tabellen-Chunks. Die Zahl für den Tabellenpfad kommt aus dem
-Bescheid-Bild (11.14) über `scripts/pruefe_tabellenpfad.py`.
+Gemessen mit `scripts/messe_chunking.py` auf dem echten Korpus (fünf deutsche Dateien,
+zwei weitere PDFs fallen unter den Sprachfilter), dichte Suche, Recall@10:
+
+| Strategie | Abschnitte | Index | Recall@10 |
+|---|---|---|---|
+| fenster | 1511 | 943 919 | 0,538 |
+| struktur | 1643 | 860 844 | **0,692** |
+| auto (Detektor) | 1643 | 860 844 | **0,692** |
+
+Der Detektor wählt `struktur` für vier Dateien und `fenster` für das Trennblatt. Damit
+gilt der Wert 0,692 jetzt auch für den echten Index; vorher standen dort 1610 Zeilen
+aus dem alten Chunking. Die Abweichung zur früheren Zeile (943 914 zu 943 919 Zeichen)
+kommt vom Tabellen-Kopf-Chunk des Trennblatts.
+
+Der Tabellenpfad selbst wird durch den Korpus nicht gemessen: nur das Trennblatt hat
+keine Textebene, und es trägt keine Datentabelle. Die Zahl für den Pfad kommt aus dem
+Bescheid-Bild über `scripts/pruefe_tabellenpfad.py`: 5 Spalten, 12 Zeilen, daraus ein
+Kopf-Chunk und 12 Zeilen-Chunks (drei breite Zeilen an Zellgrenzen geteilt), längster
+Chunk 571 Zeichen, keine Warnung.
 

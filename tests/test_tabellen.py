@@ -180,3 +180,14 @@ def test_maskiere_tabellen_haelt_die_laenge_und_entfernt_nur_die_tabelle() -> No
     assert "Vor der Tabelle steht ein Satz." in maskiert
     assert "Nach der Tabelle steht ein Satz." in maskiert
     assert markdown_zu_tabellen(maskiert) == []
+
+
+def test_tabelle_ohne_kopfzeilentrenner_erfindet_keine_kopfzeile() -> None:
+    # Ohne Trennzeile ist die erste Zeile keine erkennbare Kopfzeile. Sie als Kopf
+    # auszugeben waere geraten (V4).
+    ergebnis = tabellen_chunks(
+        "| a | b |\n| c | d |", max_chars=200, kopf_zeilen=0, max_zeilen=200
+    )
+    assert ergebnis.tabellen == 1
+    assert all("Kopf: unbekannt" in chunk.text for chunk in ergebnis.chunks)
+    assert any("Kopfzeilentrenner" in warnung for warnung in ergebnis.warnungen)

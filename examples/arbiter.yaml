@@ -1,0 +1,59 @@
+# Example configuration. Copy to arbiter.yaml and edit the paths and model names.
+#
+# ${VAR} is replaced from the environment; an unset or empty variable is an error.
+# Unknown keys are rejected, so a typo cannot silently change nothing.
+
+db_path: ${ARBITER_DB}
+
+backends:
+  base_url: ${ARBITER_BASE_URL}
+  embed_model: ${ARBITER_EMBED_MODEL}
+  rerank_model: bge-reranker-v2-m3
+  chat_model: qwen2.5-7b-instruct
+  # Only needed when ocr is true on a corpus.
+  ocr_dots_model: dots-mocr
+  ocr_paddle_model: paddleocr-vl
+
+rags:
+  documents:
+    description: Technical documents and articles
+    corpus_path: ${ARBITER_CORPUS}
+    extensions: [".pdf"]
+
+    top_k_dense: 20
+    top_k_fts: 20
+    fuse_top_k: 20
+    rerank_top_n: 5
+
+    # Chunking. auto uses the binary structure detector.
+    chunk_strategie: auto
+    chunk_chars: 600
+    chunk_overlap: 100
+    struktur_ebene: 2
+    xref_max: 3
+    xref_chars: 200
+
+    # Retrieval. The full-text half can hurt when a repeated footer matches
+    # almost every question; measure it on your own corpus.
+    hybrid: true
+    fts_stem: false
+    # null = no language filter, "de" = keep German documents only.
+    sprache: null
+    eltern_seite: false
+
+    # OCR. false = pages keep their text layer; scanned pages are skipped.
+    ocr: false
+    ocr_alle_seiten: false
+    ocr_dpi: 200
+    ocr_dpi_paddle: 300
+    ocr_paddle_prompt: "Table Recognition:"
+    tabellen_kopf_zeilen: 3
+    tabellen_max_zeilen: 200
+
+    # Gate and answer.
+    gate_kandidaten: 5
+    gate_schwelle: 0.5
+    gate_prompt: teil
+    antwort_passagen: 3
+    antwort_pruefung: false
+    antwort_schwelle: 0.5

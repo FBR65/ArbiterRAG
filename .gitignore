@@ -6,6 +6,6 @@ htmlcov/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
-arbiter.yaml
-arbiter.env
+/arbiter.yaml
+/arbiter.env
 goldset/

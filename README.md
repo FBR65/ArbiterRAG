@@ -43,6 +43,7 @@ All models are called through one OpenAI-compatible endpoint (llama-swap on
 | Indexing: PDF and text, deduplication, language filter, OCR | implemented |
 | Chunking: `fenster`, `struktur`, `qes`, automatic decider | implemented |
 | Table chunking from structured OCR (OTSL) | implemented |
+| Layout detection for tables (DocLayout-YOLO over ONNX) | implemented |
 | Search: dense retrieval, full-text, reciprocal rank fusion | implemented |
 | Reranking via `/v1/rerank` | implemented |
 | Gate: one yes/no decision per candidate, read from logprobs | implemented |
@@ -100,6 +101,9 @@ side.
   - `qwen2.5-7b-instruct` — gate and answer (`/v1/chat/completions`, needs `logprobs`)
   - `paddleocr-vl` — structured reading of scanned pages; the table prompt returns OTSL
   - `dots-mocr` — layout reading of the same page, kept as the comparison
+- For layout detection: `onnxruntime` (installed with the project) and the ONNX file
+  with the Apache-2.0 weights of DocLayout-YOLO, about 75 MB. It is not part of the
+  repository; fetch it once with `uv run python scripts/hole_layout_modell.py`.
 - About 8 GB of GPU memory when all models are resident.
 
 The model names are configuration, not code. Any OpenAI-compatible server that supports
@@ -172,6 +176,13 @@ rejected, so a typo cannot silently disable a setting.
 | `ocr_paddle_prompt` | `Table Recognition:` | task prompt for the structured reading |
 | `tabellen_kopf_zeilen` | 3 | rows in the table head chunk |
 | `tabellen_max_zeilen` | 200 | row limit per table; above it a warning is reported |
+| `layout` | false | detect table regions on every page and read them separately |
+| `layout_modell` | `""` | path to the ONNX file; empty means layout is off |
+| `layout_schwelle` | 0.25 | minimum confidence for a region |
+| `layout_min_flaeche` | 0.01 | minimum area as a share of the page |
+| `layout_dpi` | 200 | resolution for detection |
+| `layout_dpi_ocr` | 300 | resolution for the table crop |
+| `layout_rand` | 0.01 | padding around the table box, as a page share |
 | `gate_kandidaten` | 5 | candidates the gate sees |
 | `gate_schwelle` | 0.5 | P(ja) needed for admission |
 | `gate_prompt` | `teil` | gate prompt variant: `teil`, `streng`, `beleg` |
@@ -337,6 +348,29 @@ Measured with the running `paddleocr-vl` on a one-page tax notice: 5 columns, 12
 head chunk and 12 row chunks (three wide rows split at cell borders), longest chunk 571
 characters, no warnings.
 
+### Layout detection (optional)
+
+With `layout: true`, every page of a PDF is rendered once at `layout_dpi` and passed to
+DocLayout-YOLO, a YOLOv10-based detector (arXiv 2410.12628). Its code is AGPL-3.0 and is
+not used here; only the Apache-2.0 weights are used, as an ONNX file through
+`onnxruntime` (MIT), with the decoder in `layout.py`. The detector returns boxes for ten
+classes; only `table` is used. Boxes below `layout_schwelle` or `layout_min_flaeche` are
+dropped, and boxes that overlap a better one count as the same table.
+
+Each remaining box is cropped with `layout_rand` padding at `layout_dpi_ocr`, read with
+the table prompt, and turned into row chunks. The text inside the box is read from the
+text layer with `get_text_bounded` and removed from the page text line by line, so the
+table stands only once in the index. On pages without a text layer the dots reading
+stays the page text and only detected tables are read; that removes the whole-page false
+table which the unconditional prompt produced.
+
+Measured on the corpus (292 pages, 200 dpi, CPU): 0.85 to 0.91 s per page, 30 table
+regions in 27 pages (19 in the magazine, 12 in the slide deck, none in the three articles
+and none on the separator sheet), all three pages of a hand-checked sample carried a real
+table. With layout on the index grows from 1643 to 1767 chunks (+3.6 %); recall@10 stays
+at 0.692. The ingest takes about 27 minutes instead of 7, because slide-sized crops at
+300 dpi are expensive for the table reader.
+
 ## Retrieval and reranking
 
 Fusion is reciprocal rank fusion with `k = 60`. The reranker scores `(question, passage)`
@@ -419,14 +453,15 @@ failures are documented in `docs/EVIDENCE-verbesserungen.md`, section J.
 
 - **The sentence check is not calibrated.** Its false-accept rate is unknown. It both
   drops correct statements and lets wrong ones through.
-- **Table chunks need a scanned page.** They come from the OCR path, which runs on pages
-  without a text layer (`ocr_alle_seiten: false`, the default). A digital PDF with a table
-  keeps its text layer; the table is not turned into row chunks there.
-- **The table prompt is unconditional and table detection is open.** `paddleocr-vl`
-  answers `Table Recognition:` on any page. Measured on a textless separator sheet without
-  a table: it returned a table with a header and no rows, and the page was indexed as one
-  head chunk. Table detection without full OCR (lines and rectangles from the PDF) is
-  decision D38 in the specification and not implemented.
+- **Table chunks need a scanned page or layout detection.** Without `layout: true` they
+  come from the OCR path, which runs on pages without a text layer
+  (`ocr_alle_seiten: false`, the default). With layout on, tables in digital PDFs are
+  found and read as well, at the cost of the ingest time named above.
+- **Without layout detection the table prompt is unconditional.** `paddleocr-vl` answers
+  `Table Recognition:` on any page. Measured on a textless separator sheet without a
+  table: it returned a table with a header and no rows, and the page was indexed as one
+  head chunk. With `layout: true` only detected table crops are read, and the separator
+  sheet yields no table.
 - **A table across several pages is one unit.** All its row chunks carry the page on which
   the table starts. A citation of a row after a page break can be off by one page.
 - **The structure chunker is line-based.** It reads headings, numbered clauses and
@@ -446,22 +481,22 @@ failures are documented in `docs/EVIDENCE-verbesserungen.md`, section J.
 ## Testing and quality gates
 
 ```bash
-uv run pytest                          # 254 tests, no model needed
+uv run pytest                          # 278 tests, no model needed
 uv run pytest -m integration           # needs the real endpoints
 uv run ruff check .                    # lint
 uv run mypy                           # strict type check of src/
 uv run pytest --cov=arbiter           # coverage
-uv run python scripts/mutants.py      # 39 mutants, every one must die
+uv run python scripts/mutants.py      # 48 mutants, every one must die
 ```
 
 The unit tests need no model: the HTTP layer is faked, the gate takes an injected logprob
 map, and the terminal UI runs against a stub pipeline. The integration marker is excluded
 by default.
 
-Current state: 254 tests green, ruff and mypy without findings, 39/39 hand-written mutants
+Current state: 278 tests green, ruff and mypy without findings, 48/48 hand-written mutants
 killed, line coverage 87 % overall (`tabellen.py` 96 %, `chunk.py` 99 %). The evidence for
-the table and OCR work is in `docs/EVIDENCE-tabellen.md`; the chunking stage is documented
-in `docs/EVIDENCE-stufe7.md`.
+the table and OCR work is in `docs/EVIDENCE-tabellen.md`, for the layout detection in
+`docs/EVIDENCE-layout.md`; the chunking stage is documented in `docs/EVIDENCE-stufe7.md`.
 
 The goldset used for the numbers above is not part of this repository: it consists of
 questions about private documents and therefore stays local (`goldset/downloads.yaml`,
@@ -475,6 +510,7 @@ src/arbiter/
   runtime.py          reads arbiter.env for the CLI and the TUI
   loaders.py          PDF via pypdfium2 (pypdf fallback), text, duplicates, language filter
   ocr.py              page rendering, dots-mocr client, layout-to-text
+  layout.py           DocLayout-YOLO over ONNX: boxes, table boxes, line removal
   tabellen.py         OTSL parser, Markdown tables, row chunks, table masking
   chunk.py            strategy switch, table blocks taken out first, window splitter
   chunk_structure.py  headings, sections, breadcrumbs, cross-references

@@ -74,6 +74,41 @@ def test_gate_schwelle_wird_gelesen(tmp_path: Path) -> None:
     assert load_config(_write(tmp_path, text), _env()).rags["miethaus"].gate_schwelle == 0.7
 
 
+def test_layout_schluessel_werden_gelesen(tmp_path: Path) -> None:
+    text = MINIMAL.replace(
+        '    extensions: [".pdf"]\n',
+        '    extensions: [".pdf"]\n'
+        "    layout: true\n"
+        "    layout_modell: /modelle/layout.onnx\n"
+        "    layout_schwelle: 0.3\n"
+        "    layout_min_flaeche: 0.02\n"
+        "    layout_dpi: 150\n"
+        "    layout_dpi_ocr: 250\n"
+        "    layout_rand: 0.02\n",
+    )
+    rag = load_config(_write(tmp_path, text), _env()).rags["miethaus"]
+    assert rag.layout is True
+    assert rag.layout_modell == "/modelle/layout.onnx"
+    assert rag.layout_schwelle == 0.3
+    assert rag.layout_min_flaeche == 0.02
+    assert rag.layout_dpi == 150
+    assert rag.layout_dpi_ocr == 250
+    assert rag.layout_rand == 0.02
+
+
+def test_layout_ist_standardmaessig_aus() -> None:
+    from arbiter.config import Rag
+
+    rag = Rag(name="x", description="x", corpus_path=Path("/tmp"), extensions=(".pdf",))
+    assert rag.layout is False
+    assert rag.layout_modell == ""
+    assert rag.layout_schwelle == 0.25
+    assert rag.layout_min_flaeche == 0.01
+    assert rag.layout_dpi == 200
+    assert rag.layout_dpi_ocr == 300
+    assert rag.layout_rand == 0.01
+
+
 def test_jedes_feld_der_rag_klasse_ist_ein_erlaubter_schluessel() -> None:
     # Sonst ist ein Feld im Code vorhanden, aber in der YAML nicht setzbar: der
     # Schluessel wird als Tippfehler abgelehnt. Genau das war bei gate_schwelle der Fall.

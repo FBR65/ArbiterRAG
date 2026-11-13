@@ -264,6 +264,63 @@ MUTANTS = [
         "    return [zeile.strip() for zeile in satz.splitlines() if zeile.strip()]",
         "    return [satz.strip()]",
     ),
+    Mutant(
+        "layout-schwelle-ignoriert",
+        "src/arbiter/layout.py",
+        "        if float(konfidenz) < schwelle:",
+        "        if False:",
+    ),
+    Mutant(
+        "layout-flaeche-ignoriert",
+        "src/arbiter/layout.py",
+        "        if (rechts - links) * (unten - oben) < min_flaeche:",
+        "        if False:",
+    ),
+    Mutant(
+        "layout-kasten-nicht-begrenzt",
+        "src/arbiter/layout.py",
+        "        links = min(max((float(x1) - box.rand_x) / box.gain / breite, 0.0), 1.0)",
+        "        links = (float(x1) - box.rand_x) / box.gain / breite",
+    ),
+    Mutant(
+        "layout-bildkanal-nicht-gedreht",
+        "src/arbiter/layout.py",
+        "np.asarray(flaeche, dtype=np.float32)[:, :, ::-1]",
+        "np.asarray(flaeche, dtype=np.float32)[:, :, :]",
+    ),
+    Mutant(
+        "layout-zeilen-nicht-entfernt",
+        "src/arbiter/layout.py",
+        "        if schluessel and gesucht.get(schluessel, 0) > 0:",
+        "        if False:",
+    ),
+    Mutant(
+        "layout-position-immer-null",
+        "src/arbiter/layout.py",
+        "                position = laenge",
+        "                position = 0",
+    ),
+    Mutant(
+        "pipeline-tabellenchunk-ohne-seite",
+        "src/arbiter/pipeline.py",
+        "            start = anfaenge[stelle.seite_index] + stelle.position",
+        "            start = 0",
+    ),
+    Mutant(
+        "pipeline-layout-fehler-ignoriert",
+        "src/arbiter/pipeline.py",
+        "            except Exception as exc:\n                warnungen.append(\n"
+        "                    f\"{quelle}, Seite {seite.seite}: "
+        "Layout-Erkennung fehlgeschlagen ({exc})\"\n"
+        "                )\n                continue",
+        "            except Exception as exc:\n                continue",
+    ),
+    Mutant(
+        "pipeline-entfernt-den-tabellentext-nicht",
+        "src/arbiter/pipeline.py",
+        "                text = ergebnis.text",
+        "                text = text",
+    ),
 ]
 
 

@@ -285,6 +285,29 @@ def _ocr_page(
     )
 
 
+def text_im_kasten(
+    pdf: pdfium.PdfDocument,
+    seite: int,
+    kasten: tuple[float, float, float, float],
+) -> str:
+    """Text inside a box given as page fractions, origin top left (spec 11.16, W6).
+
+    The layout detector delivers boxes as fractions of the page. ``get_text_bounded``
+    expects PDF points with the origin bottom left, so the box is converted. The
+    returned text is what the text layer holds inside the box; it is not OCR.
+    """
+    page = pdf[seite - 1]
+    breite, hoehe = page.get_size()
+    textpage = page.get_textpage()
+    links = kasten[0] * breite
+    rechts = kasten[2] * breite
+    oben = (1.0 - kasten[1]) * hoehe
+    unten = (1.0 - kasten[3]) * hoehe
+    return str(
+        textpage.get_text_bounded(left=links, bottom=unten, right=rechts, top=oben)
+    )
+
+
 def _load_text(path: Path, relative: str, result: LoadResult) -> None:
     try:
         text = path.read_text(encoding="utf-8")

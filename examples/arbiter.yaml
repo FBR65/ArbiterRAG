@@ -50,6 +50,16 @@ rags:
     tabellen_kopf_zeilen: 3
     tabellen_max_zeilen: 200
 
+    # Layout detection (optional). Needs the ONNX file from
+    # scripts/hole_layout_modell.py and the onnxruntime package.
+    # layout: false
+    # layout_modell: /home/user/.cache/arbiterrag/models/doclayout_yolo_docstructbench_imgsz1024.onnx
+    # layout_schwelle: 0.25
+    # layout_min_flaeche: 0.01
+    # layout_dpi: 200
+    # layout_dpi_ocr: 300
+    # layout_rand: 0.01
+
     # Gate and answer.
     gate_kandidaten: 5
     gate_schwelle: 0.5

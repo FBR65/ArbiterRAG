@@ -7,15 +7,19 @@ Indexing, search, the gate and the answer step live here; each one is a method o
 from __future__ import annotations
 
 import hashlib
+import io
 from bisect import bisect_right
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+import pypdfium2 as pdfium
+from PIL import Image
+
 from arbiter.answer import KEINE_ANTWORT, Quelle, build_answer_prompt
 from arbiter.chat import ChatClient
 from arbiter.check import build_claim_prompt, build_repair_prompt, ist_meta, split_claims
-from arbiter.chunk import ChunkParameter, QePaar, chunk_datei
+from arbiter.chunk import Chunk, ChunkParameter, QePaar, chunk_datei
 from arbiter.chunk_structure import Kennzahlen
 from arbiter.config import Config, Rag
 from arbiter.decision import (
@@ -26,14 +30,44 @@ from arbiter.decision import (
 )
 from arbiter.embedding import HttpEmbedder
 from arbiter.fusion import rrf_many
-from arbiter.loaders import Document, OcrHook, OcrPage, load_corpus
+from arbiter.layout import (
+    LayoutDetektor,
+    Region,
+    eindeutige_tabellen,
+    entferne_tabellenzeilen,
+    tabellen_regionen,
+)
+from arbiter.loaders import Document, OcrHook, OcrPage, load_corpus, text_im_kasten
 from arbiter.ocr import VisionOcr, dots_to_text, render_png, word_overlap
 from arbiter.rerank import RerankClient
 from arbiter.store import Hit, Record, Store
-from arbiter.tabellen import otsl_zu_tabelle, tabelle_zu_markdown
+from arbiter.tabellen import otsl_zu_tabelle, tabelle_zu_markdown, tabellen_chunks
 
 MAX_FRAGE_ZEICHEN = 2000
 EMBED_BATCH = 32
+
+
+@dataclass(frozen=True)
+class Tabellenfund:
+    """One table a layout detector found on a page (spec 11.16, W4/W5).
+
+    ``zeilen`` are the lines the text layer holds inside the box; they are removed
+    from the page text, so the table does not stand twice in the index (D44).
+    """
+
+    kasten: tuple[float, float, float, float]
+    markdown: str
+    zeilen: tuple[str, ...] = ()
+    warnungen: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class _Tabellenstelle:
+    """A table with the page it was found on and its position in the page text."""
+
+    seite_index: int
+    position: int
+    fund: Tabellenfund
 
 
 def ocr_lesung(dots_text: str, zweitmeinung: str) -> tuple[str, list[str]]:
@@ -100,6 +134,7 @@ class DateiBericht:
     begruendung: str = ""
     tabellen: int = 0
     zeilen_chunks: int = 0
+    tabellen_seiten: int = 0
 
 
 @dataclass
@@ -115,6 +150,7 @@ class IndexReport:
     entfernt: int = 0
     tabellen: int = 0
     zeilen_chunks: int = 0
+    tabellen_seiten: int = 0
     warnings: list[str] = field(default_factory=list)
     dateien: list[DateiBericht] = field(default_factory=list)
 
@@ -209,12 +245,20 @@ class Pipeline:
         # indexing never calls a model unless someone asked for it; ``neuer_pipeline``
         # wires the real generator for CLI, TUI and API.
         self.qe_quelle = qe_quelle
+        # Layout detection (spec 11.16). ``layout_quelle`` is injectable, like the gate:
+        # tests replace it, the real pipeline builds it from the configuration.
+        self.layout_quelle: Callable[[str, int], list[Tabellenfund]] | None = None
+        self._layout_aktiv = False
+        self._detektor: LayoutDetektor | None = None
+        self._paddle: VisionOcr | None = None
 
     def index(self) -> IndexReport:
         # The check comes first: an unchanged file is not read again, so OCR and
         # embedding are not paid twice for it. Skipped files keep their rows.
         bekannt = self.store.fingerprints(self.rag.name)
         einstellungen = self._ingest_einstellungen()
+        layout_quelle, layout_warnungen = self._layout_quelle()
+        self._layout_aktiv = layout_quelle is not None
 
         def unveraendert(relative: str, kennung: str) -> bool:
             return bekannt.get(relative) == kennung
@@ -235,7 +279,7 @@ class Pipeline:
             ocr_pages=sum(1 for doc in loaded.documents if doc.ocr),
             duplicates=loaded.duplicates,
             unchanged=loaded.unchanged,
-            warnings=list(loaded.warnings),
+            warnings=[*loaded.warnings, *layout_warnungen],
         )
         if not loaded.documents:
             return report
@@ -243,7 +287,9 @@ class Pipeline:
         records: list[Record] = []
         texts: list[str] = []
         for quelle, seiten in _nach_datei(loaded.documents).items():
-            text, anfaenge = verkette_seiten([seite.text for seite in seiten])
+            texte, stellen, warnungen = self._layout_anwenden(quelle, seiten, layout_quelle)
+            report.warnings.extend(warnungen)
+            text, anfaenge = verkette_seiten(texte)
             ergebnis = chunk_datei(
                 text,
                 quelle,
@@ -252,21 +298,31 @@ class Pipeline:
                 embedder=self.embedder,
             )
             report.warnings.extend(ergebnis.warnungen)
+            layout_chunks, layout_tabellen, layout_zeilen, layout_seiten, layout_hinweise = (
+                self._layout_chunks(stellen, anfaenge, quelle, seiten)
+            )
+            report.warnings.extend(layout_hinweise)
+            chunks = sorted(
+                [*ergebnis.chunks, *layout_chunks],
+                key=lambda chunk: (chunk.start, chunk.ende),
+            )
             datei = DateiBericht(
                 quelle=quelle,
                 strategie=ergebnis.strategie,
                 uebersteuert=ergebnis.auswahl is None,
                 wert=ergebnis.auswahl.wert if ergebnis.auswahl else None,
                 kennzahlen=ergebnis.auswahl.kennzahlen if ergebnis.auswahl else None,
-                chunks=len(ergebnis.chunks),
+                chunks=len(chunks),
                 begruendung=ergebnis.auswahl.begruendung if ergebnis.auswahl else "",
-                tabellen=ergebnis.tabellen,
-                zeilen_chunks=ergebnis.zeilen_chunks,
+                tabellen=ergebnis.tabellen + layout_tabellen,
+                zeilen_chunks=ergebnis.zeilen_chunks + layout_zeilen,
+                tabellen_seiten=layout_seiten,
             )
             report.dateien.append(datei)
-            report.tabellen += ergebnis.tabellen
-            report.zeilen_chunks += ergebnis.zeilen_chunks
-            for number, chunk in enumerate(ergebnis.chunks, start=1):
+            report.tabellen += datei.tabellen
+            report.zeilen_chunks += datei.zeilen_chunks
+            report.tabellen_seiten += layout_seiten
+            for number, chunk in enumerate(chunks, start=1):
                 seite = seite_bei(anfaenge, chunk.start)
                 seite_ende = seite_bei(anfaenge, max(chunk.ende - 1, chunk.start))
                 quelle_seite = seiten[seite - 1]
@@ -312,6 +368,202 @@ class Pipeline:
                 self.store.set_fingerprint(self.rag.name, relative, kennung)
         self.store.ensure_fts(self.rag.name, stem=self.rag.fts_stem)
         return report
+
+    def _layout_quelle(self) -> tuple[Callable[[str, int], list[Tabellenfund]] | None, list[str]]:
+        """The table hook, or ``None`` with a warning (spec 11.16, W10, D47)."""
+        if not self.rag.layout:
+            return None, []
+        if self.layout_quelle is not None:
+            return self.layout_quelle, []
+        if not self.rag.layout_modell:
+            return None, ["layout: true ohne layout_modell, Layout ist aus"]
+        modell = Path(self.rag.layout_modell).expanduser()
+        if not modell.is_file():
+            return None, [f"Layout-Modell fehlt: {modell}, Layout ist aus"]
+        try:
+            detektor = self._layout_detektor()
+        except Exception as exc:
+            return None, [f"Layout-Modell nicht ladbar ({exc}), Layout ist aus"]
+        return self._layout_haken(detektor), []
+
+    def _layout_detektor(self) -> LayoutDetektor:
+        if self._detektor is None:
+            self._detektor = LayoutDetektor(
+                Path(self.rag.layout_modell).expanduser(),
+                schwelle=self.rag.layout_schwelle,
+                min_flaeche=self.rag.layout_min_flaeche,
+            )
+        return self._detektor
+
+    def _paddle_client(self) -> VisionOcr:
+        if self._paddle is None:
+            self._paddle = VisionOcr(
+                self.config.backends.base_url, self.config.backends.ocr_paddle_model
+            )
+        return self._paddle
+
+    def _layout_haken(
+        self, detektor: LayoutDetektor
+    ) -> Callable[[str, int], list[Tabellenfund]]:
+        """Per page: detect, crop, read the crop, keep the table text lines."""
+
+        def haken(quelle: str, seite: int) -> list[Tabellenfund]:
+            pfad = self.rag.corpus_path / quelle
+            regionen = eindeutige_tabellen(
+                tabellen_regionen(
+                    detektor.erkenne(render_png(pfad, seite, self.rag.layout_dpi))
+                )
+            )
+            if not regionen:
+                return []
+            png = render_png(pfad, seite, self.rag.layout_dpi_ocr)
+            bild = Image.open(io.BytesIO(png)).convert("RGB")
+            pdf = pdfium.PdfDocument(str(pfad))
+            try:
+                funde: list[Tabellenfund] = []
+                for region in regionen:
+                    fund = self._tabelle_aus_region(pdf, bild, seite, region)
+                    if fund is not None:
+                        funde.append(fund)
+                return funde
+            finally:
+                pdf.close()
+
+        return haken
+
+    def _tabelle_aus_region(
+        self,
+        pdf: pdfium.PdfDocument,
+        bild: Image.Image,
+        seite: int,
+        region: Region,
+    ) -> Tabellenfund | None:
+        """Crop, read with the table prompt, and keep the text lines (W4, W5, W6)."""
+        x1, y1, x2, y2 = region.kasten
+        rand = self.rag.layout_rand
+        kasten = (
+            max(0.0, x1 - rand),
+            max(0.0, y1 - rand),
+            min(1.0, x2 + rand),
+            min(1.0, y2 + rand),
+        )
+        ausschnitt = bild.crop(
+            (
+                int(kasten[0] * bild.width),
+                int(kasten[1] * bild.height),
+                int(kasten[2] * bild.width),
+                int(kasten[3] * bild.height),
+            )
+        )
+        puffer = io.BytesIO()
+        ausschnitt.save(puffer, format="PNG")
+        antwort = self._paddle_client().text_from_png(
+            puffer.getvalue(), prompt=self.rag.ocr_paddle_prompt
+        )
+        tabelle = otsl_zu_tabelle(antwort)
+        if tabelle is None:
+            return Tabellenfund(
+                kasten=region.kasten,
+                markdown="",
+                warnungen=("Tabellenausschnitt nicht als OTSL gelesen",),
+            )
+        if tabelle.breite < 2 or not tabelle.zeilen:
+            return Tabellenfund(
+                kasten=region.kasten,
+                markdown="",
+                warnungen=(
+                    "Tabellenausschnitt ohne nutzbare Zeilen "
+                    f"({tabelle.breite} Spalten, {len(tabelle.zeilen)} Zeilen)",
+                ),
+            )
+        zeilen = tuple(
+            zeile.strip()
+            for zeile in text_im_kasten(pdf, seite, region.kasten).splitlines()
+            if zeile.strip()
+        )
+        return Tabellenfund(
+            kasten=region.kasten,
+            markdown=tabelle_zu_markdown(tabelle),
+            zeilen=zeilen,
+            warnungen=tuple(tabelle.warnungen),
+        )
+
+    def _layout_anwenden(
+        self,
+        quelle: str,
+        seiten: Sequence[Document],
+        layout_quelle: Callable[[str, int], list[Tabellenfund]] | None,
+    ) -> tuple[list[str], list[_Tabellenstelle], list[str]]:
+        """Page texts after table removal, the tables found, and warnings (W6)."""
+        texte = [seite.text for seite in seiten]
+        stellen: list[_Tabellenstelle] = []
+        warnungen: list[str] = []
+        if layout_quelle is None:
+            return texte, stellen, warnungen
+        for index, seite in enumerate(seiten):
+            if seite.seite is None:
+                continue
+            try:
+                befunde = layout_quelle(quelle, seite.seite)
+            except Exception as exc:
+                warnungen.append(
+                    f"{quelle}, Seite {seite.seite}: Layout-Erkennung fehlgeschlagen ({exc})"
+                )
+                continue
+            text = texte[index]
+            for befund in sorted(befunde, key=lambda fund: fund.kasten[1]):
+                warnungen.extend(
+                    f"{quelle}, Seite {seite.seite}: {warnung}" for warnung in befund.warnungen
+                )
+                ergebnis = entferne_tabellenzeilen(text, befund.zeilen)
+                if befund.zeilen and ergebnis.entfernt == 0:
+                    warnungen.append(
+                        f"{quelle}, Seite {seite.seite}: Tabellentext nicht aus dem "
+                        "Seitentext entfernt"
+                    )
+                elif ergebnis.fehlend:
+                    warnungen.append(
+                        f"{quelle}, Seite {seite.seite}: {ergebnis.fehlend} Tabellenzeile(n) "
+                        "nicht im Seitentext gefunden"
+                    )
+                text = ergebnis.text
+                stellen.append(_Tabellenstelle(index, max(ergebnis.position, 0), befund))
+            texte[index] = text
+        return texte, stellen, warnungen
+
+    def _layout_chunks(
+        self,
+        stellen: Sequence[_Tabellenstelle],
+        anfaenge: Sequence[int],
+        quelle: str,
+        seiten: Sequence[Document],
+    ) -> tuple[list[Chunk], int, int, int, list[str]]:
+        """Table chunks with the position of their table in the file (W5, W7)."""
+        chunks: list[Chunk] = []
+        hinweise: list[str] = []
+        tabellen = 0
+        zeilen_chunks = 0
+        betroffene_seiten: set[int] = set()
+        parameter = self._chunk_parameter()
+        for stelle in stellen:
+            seite = seiten[stelle.seite_index].seite or 0
+            ergebnis = tabellen_chunks(
+                stelle.fund.markdown,
+                max_chars=parameter.max_chars,
+                kopf_zeilen=parameter.tabellen_kopf_zeilen,
+                max_zeilen=parameter.tabellen_max_zeilen,
+            )
+            hinweise.extend(
+                f"{quelle}, Seite {seite}: {warnung}" for warnung in ergebnis.warnungen
+            )
+            start = anfaenge[stelle.seite_index] + stelle.position
+            for chunk in ergebnis.chunks:
+                chunks.append(replace(chunk, start=start, ende=start + 1))
+            tabellen += ergebnis.tabellen
+            zeilen_chunks += ergebnis.zeilen_chunks
+            if ergebnis.tabellen:
+                betroffene_seiten.add(stelle.seite_index)
+        return chunks, tabellen, zeilen_chunks, len(betroffene_seiten), hinweise
 
     def search(self, question: str) -> SearchResult:
         if len(question) > MAX_FRAGE_ZEICHEN:
@@ -692,6 +944,13 @@ class Pipeline:
                 rag.ocr_paddle_prompt,
                 rag.tabellen_kopf_zeilen,
                 rag.tabellen_max_zeilen,
+                rag.layout,
+                rag.layout_modell,
+                rag.layout_schwelle,
+                rag.layout_min_flaeche,
+                rag.layout_dpi,
+                rag.layout_dpi_ocr,
+                rag.layout_rand,
                 rag.sprache,
                 self.config.backends.ocr_dots_model,
                 self.config.backends.ocr_paddle_model,
@@ -714,6 +973,10 @@ class Pipeline:
             # layout at 200 dpi, paddle reads the table structure at 300 dpi.
             png_dots = render_png(path, page_number, dpi_dots)
             dots_text = dots_to_text(dots.text_from_png(png_dots))
+            if self._layout_aktiv:
+                # The whole page prompt read the page columns as a table. With layout
+                # detection only the detected tables go to paddle (spec W8).
+                return OcrPage(text=dots_text, vergleich="", ueberlappung=0.0)
             png_paddle = render_png(path, page_number, dpi_paddle)
             zweitmeinung = paddle.text_from_png(png_paddle, prompt=self.rag.ocr_paddle_prompt)
             # The structured reading is what goes into the index; the dots reading stays

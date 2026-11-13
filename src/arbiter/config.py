@@ -72,6 +72,13 @@ class Rag:
     tabellen_kopf_zeilen: int = 3
     tabellen_max_zeilen: int = 200
     ocr_paddle_prompt: str = "Table Recognition:"
+    layout: bool = False
+    layout_modell: str = ""
+    layout_schwelle: float = 0.25
+    layout_min_flaeche: float = 0.01
+    layout_dpi: int = 200
+    layout_dpi_ocr: int = 300
+    layout_rand: float = 0.01
 
 
 @dataclass(frozen=True)
@@ -130,6 +137,13 @@ _RAG_KEYS = {
     "tabellen_kopf_zeilen",
     "tabellen_max_zeilen",
     "ocr_paddle_prompt",
+    "layout",
+    "layout_modell",
+    "layout_schwelle",
+    "layout_min_flaeche",
+    "layout_dpi",
+    "layout_dpi_ocr",
+    "layout_rand",
 }
 _REQUIRED_BACKENDS = {
     "base_url",
@@ -258,6 +272,13 @@ def _rag(name: str, entry: Any, filename: str) -> Rag:
         tabellen_kopf_zeilen=int(entry.get("tabellen_kopf_zeilen", 3)),
         tabellen_max_zeilen=int(entry.get("tabellen_max_zeilen", 200)),
         ocr_paddle_prompt=str(entry.get("ocr_paddle_prompt", "Table Recognition:")),
+        layout=bool(entry.get("layout", False)),
+        layout_modell=str(entry.get("layout_modell", "")),
+        layout_schwelle=float(entry.get("layout_schwelle", 0.25)),
+        layout_min_flaeche=float(entry.get("layout_min_flaeche", 0.01)),
+        layout_dpi=int(entry.get("layout_dpi", 200)),
+        layout_dpi_ocr=int(entry.get("layout_dpi_ocr", 300)),
+        layout_rand=float(entry.get("layout_rand", 0.01)),
     )
 
 

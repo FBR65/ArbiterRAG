@@ -94,7 +94,8 @@ def _index(pipeline: Pipeline) -> int:
         f"{report.skipped_files} ohne Text, {report.textless_pages} Seiten ohne Text, "
         f"{report.ocr_pages} Seiten per OCR, {report.duplicates} Dubletten, "
         f"{report.entfernt} Dateien aus dem Index entfernt, "
-        f"{report.tabellen} Tabellen mit {report.zeilen_chunks} Zeilen-Chunks"
+        f"{report.tabellen} Tabellen auf {report.tabellen_seiten} Seiten mit "
+        f"{report.zeilen_chunks} Zeilen-Chunks"
     )
     for datei in report.dateien:
         print(_datei_zeile(datei))
@@ -108,7 +109,10 @@ def _datei_zeile(datei: DateiBericht) -> str:
     herkunft = "übersteuert" if datei.uebersteuert else datei.begruendung or "ohne Begründung"
     zeile = f"  {datei.quelle}: {datei.strategie} ({herkunft}), {datei.chunks} Abschnitte"
     if datei.tabellen:
-        zeile += f", {datei.tabellen} Tabellen, {datei.zeilen_chunks} Zeilen-Chunks"
+        zeile += (
+            f", {datei.tabellen} Tabellen auf {datei.tabellen_seiten} Seiten, "
+            f"{datei.zeilen_chunks} Zeilen-Chunks"
+        )
     return zeile
 
 

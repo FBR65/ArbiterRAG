@@ -147,3 +147,46 @@ def test_layout_ohne_modell_ist_eine_warnung(tmp_path: Path) -> None:
     report = pipeline.index()
     assert any("layout_modell" in warnung for warnung in report.warnings)
     assert report.chunks > 0
+
+
+def test_tabellen_chunk_traegt_die_seite_der_tabelle(tmp_path: Path) -> None:
+    # Tabelle auf Seite 2: der Chunk muss dorthin gehören, nicht auf Seite 1.
+    korpus = tmp_path / "korpus"
+    korpus.mkdir(exist_ok=True)
+    _make_text_pdf(korpus / "a.pdf", ["Erste Seite", "Zweite Seite\nKopf\nMiete 940"])
+    cfg = Config(
+        db_path=tmp_path / "db",
+        backends=Backends(
+            base_url="http://test", embed_model="m", rerank_model="r", chat_model="c"
+        ),
+        rags={
+            "k": Rag(
+                name="k",
+                description="Test",
+                corpus_path=korpus,
+                extensions=(".pdf",),
+                rerank=False,
+                layout=True,
+                tabellen_kopf_zeilen=0,
+            )
+        },
+    )
+    pipeline = Pipeline(cfg, cfg.rags["k"], embedder=FlatEmbedder())
+
+    def quelle(name: str, seite: int) -> list[Tabellenfund]:
+        if seite != 2:
+            return []
+        return [
+            Tabellenfund(
+                kasten=(0.05, 0.3, 0.99, 0.6),
+                markdown="| Art | Betrag |\n| --- | --- |\n| Miete | 940 |",
+                zeilen=("Kopf", "Miete 940"),
+            )
+        ]
+
+    pipeline.layout_quelle = quelle  # type: ignore[assignment]
+    pipeline.index()
+    rows = pipeline.store._table("k").to_arrow().to_pylist()
+    zeilen = [row for row in rows if "Zeile:" in row["text"]]
+    assert zeilen
+    assert {row["seite"] for row in zeilen} == {2}

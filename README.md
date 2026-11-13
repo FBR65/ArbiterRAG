@@ -481,7 +481,7 @@ failures are documented in `docs/EVIDENCE-verbesserungen.md`, section J.
 ## Testing and quality gates
 
 ```bash
-uv run pytest                          # 278 tests, no model needed
+uv run pytest                          # 280 tests, no model needed
 uv run pytest -m integration           # needs the real endpoints
 uv run ruff check .                    # lint
 uv run mypy                           # strict type check of src/
@@ -493,7 +493,7 @@ The unit tests need no model: the HTTP layer is faked, the gate takes an injecte
 map, and the terminal UI runs against a stub pipeline. The integration marker is excluded
 by default.
 
-Current state: 278 tests green, ruff and mypy without findings, 48/48 hand-written mutants
+Current state: 280 tests green, ruff and mypy without findings, 48/48 hand-written mutants
 killed, line coverage 87 % overall (`tabellen.py` 96 %, `chunk.py` 99 %). The evidence for
 the table and OCR work is in `docs/EVIDENCE-tabellen.md`, for the layout detection in
 `docs/EVIDENCE-layout.md`; the chunking stage is documented in `docs/EVIDENCE-stufe7.md`.

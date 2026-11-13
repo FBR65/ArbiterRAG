@@ -70,6 +70,15 @@ class _Tabellenstelle:
     fund: Tabellenfund
 
 
+def datei_sha256(pfad: Path) -> str:
+    """SHA-256 of one file, in blocks (spec W2: the model is named in the report)."""
+    digest = hashlib.sha256()
+    with pfad.open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 def ocr_lesung(dots_text: str, zweitmeinung: str) -> tuple[str, list[str]]:
     """The text of one OCR page: structured when a table was recognised (spec V1, V9).
 
@@ -151,6 +160,7 @@ class IndexReport:
     tabellen: int = 0
     zeilen_chunks: int = 0
     tabellen_seiten: int = 0
+    layout_modell_sha: str = ""
     warnings: list[str] = field(default_factory=list)
     dateien: list[DateiBericht] = field(default_factory=list)
 
@@ -249,6 +259,7 @@ class Pipeline:
         # tests replace it, the real pipeline builds it from the configuration.
         self.layout_quelle: Callable[[str, int], list[Tabellenfund]] | None = None
         self._layout_aktiv = False
+        self._layout_sha = ""
         self._detektor: LayoutDetektor | None = None
         self._paddle: VisionOcr | None = None
 
@@ -281,6 +292,7 @@ class Pipeline:
             unchanged=loaded.unchanged,
             warnings=[*loaded.warnings, *layout_warnungen],
         )
+        report.layout_modell_sha = self._layout_sha
         if not loaded.documents:
             return report
 
@@ -384,6 +396,7 @@ class Pipeline:
             detektor = self._layout_detektor()
         except Exception as exc:
             return None, [f"Layout-Modell nicht ladbar ({exc}), Layout ist aus"]
+        self._layout_sha = datei_sha256(modell)
         return self._layout_haken(detektor), []
 
     def _layout_detektor(self) -> LayoutDetektor:

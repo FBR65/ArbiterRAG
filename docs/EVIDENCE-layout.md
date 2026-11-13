@@ -58,7 +58,7 @@ Zeilen- und Zeichenkästen entfällt; die SPEC hält die Revision fest.
 
 | Ebene | Befehl | Ergebnis |
 |---|---|---|
-| Testsuite | `uv run pytest` | 278 Tests, alle grün |
+| Testsuite | `uv run pytest` | 280 Tests, alle grün |
 | Lint | `uv run ruff check .` | keine Meldung |
 | Typen | `uv run mypy` | keine Meldung in 26 Dateien |
 | Mutation | `uv run python scripts/mutants.py` | 48/48 Mutanten getötet |

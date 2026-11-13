@@ -6,6 +6,7 @@ synthetischem Text; das echte Modell prüft der Messlauf.
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import numpy as np
@@ -193,3 +194,11 @@ def test_text_im_kasten_liest_die_seite(tmp_path: Path) -> None:
         pdf.close()
     assert "Miete 940 Euro" in text
     assert "Einleitung" in text
+
+
+def test_datei_sha256_nennt_die_modellversion(tmp_path: Path) -> None:
+    from arbiter.pipeline import datei_sha256
+
+    datei = tmp_path / "modell.onnx"
+    datei.write_bytes(b"abc")
+    assert datei_sha256(datei) == hashlib.sha256(b"abc").hexdigest()

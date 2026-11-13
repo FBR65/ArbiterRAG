@@ -99,6 +99,8 @@ def _index(pipeline: Pipeline) -> int:
     )
     for datei in report.dateien:
         print(_datei_zeile(datei))
+    if report.layout_modell_sha:
+        print(f"  Layout-Modell: SHA-256 {report.layout_modell_sha}")
     for warning in report.warnings:
         print(f"  Hinweis: {warning}", file=sys.stderr)
     return EXIT_OK

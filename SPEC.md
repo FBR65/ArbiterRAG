@@ -1153,11 +1153,15 @@ kein Torch, kein `ultralytics`.
 |---|---|---|---|
 | D42 | Auf welchen Seiten läuft der Detektor? | (a) jede Seite (b) nur Seiten mit Textebene (c) nur Seiten ohne Textebene | **(a)** — 0,7 s je Seite; Tabellen stehen in beiden Fällen, und der Trennblatt-Fehlalarm verschwindet nur, wenn die Erkennung dort läuft |
 | D43 | Welche Klassen werden verwendet? | (a) nur `table` (b) `table` plus `table_caption` und `table_footnote` (c) alle Klassen | **(a)** — der Tabellenleser erwartet das Gitter. Beschriftung und Fußnote bleiben Fließtext |
-| D44 | Was passiert mit dem Tabellentext der Textebene? | (a) bleibt stehen, Duplikat (b) Zeilen, deren Mitte im Kasten liegt, fallen weg (c) Zeichen im Kasten fallen weg | **(b)** — Zeilenkästen sind billiger als Zeichenkästen, und Fließtext und Tabellenzeile teilen normalerweise keine Grundlinie. Rückfall (a) mit Warnung, wenn die Koordinate fehlt |
+| D44 | Was passiert mit dem Tabellentext der Textebene? | **entschieden 2026-11-09: Text entfernen.** Reihenfolge: Zeilenkästen, sonst Zeichenkästen; erst wenn beides scheitert, bleibt der Text mit Warnung stehen | **Qualität vor Einfachheit.** Die Tabelle steht nur einmal im Speicher, als Zeilen. Ein Schalter entfällt |
 | D45 | Welche Auflösungen? | (a) Erkennung 200 dpi, Ausschnitt 300 dpi (b) beides 300 (c) Erkennung 150, Ausschnitt 300 | **(a)** — 200 dpi reicht für Kästen und kostet 0,7 s; kleine Beträge brauchen 300 dpi im Ausschnitt |
 | D46 | Schwelle und Mindestfläche? | (a) Konfidenz 0,25, Fläche 1 % der Seite (b) 0,5 und 1 % (c) 0,25 und 0,5 % | **(a)** — konservativ bei der Fläche; die Messung entscheidet, ob 0,25 Fehlalarme kostet. Der Anzeigenkasten auf S. 145 hatte 0,63 |
 | D47 | Was, wenn Modell oder Laufzeit fehlt? | (a) Abbruch (b) Warnung, Layout aus, Ingest läuft (c) Abbruch nur bei `layout: true` | **(b)** — ein optionaler Detektor darf den Ingest nicht anhalten, wie bei der OCR (V9) |
 | D48 | Standardwert | (a) `false` bis zur Messung (b) sofort `true` (c) `true` nur in der Messkonfiguration | **(a)** — ohne Messung ist `true` eine Behauptung. Nach positiver Messung wird der Standard sichtbar geändert |
+
+**Revision 2026-11-09:** Frank hat D44 entschieden: Qualität ist die Maßgabe, die
+Dopplung wird vermieden. Der Weg dorthin — Zeilenkästen oder Zeichenkästen — ist
+Implementierung, keine Entscheidung. Ein Schalter für die Textentfernung entfällt.
 
 #### Verhalten (Abnahmekriterien)
 
@@ -1175,8 +1179,10 @@ kein Torch, kein `ultralytics`.
   Zeilen-Chunks; sonst Warnung und kein Tabellen-Chunk. Die Chunks tragen die Seite der
   Region.
 - **W6** Der Tabellentext fällt aus dem Seitentext, damit er nicht doppelt im Index
-  steht (D44). Fehlt die Zeilenkoordinate, bleibt der Text stehen und der Bericht trägt
-  eine Warnung. Kein stiller Verlust und keine stille Dopplung.
+  steht (D44). Zuerst über Zeilenkästen, sonst über Zeichenkästen. Erst wenn beides
+  nicht möglich ist, bleibt der Text stehen und der Bericht trägt eine Warnung; dieser
+  Fall ist ein Mangel, kein Normalfall, und steht mit Zahl in der Messung. Kein stiller
+  Verlust und keine stille Dopplung.
 - **W7** Der Bericht nennt je Datei Seiten mit Tabellen, Tabellen und Zeilen-Chunks.
   Warnungen: Modell fehlt, Erkennung fehlgeschlagen, Tabelle leer, Text nicht entfernt.
 - **W8** Auf Seiten ohne Textebene bleibt die dots-Lesung der Text. Mit Layout entfällt
@@ -1214,7 +1220,7 @@ kein Torch, kein `ultralytics`.
 
 | Paket | Inhalt | Aufwand |
 |---|---|---|
-| 1 | Formatprüfung: liefert `pypdfium2` Zeilenkästen (`get_rect`) oder nur Zeichenkästen (`get_charbox`)? Eine Seite aus `ix.26.13.pdf`, Ausgabe nur als Zahlen | 0,5 h |
+| 1 | Formatprüfung: liefert `pypdfium2` Zeilenkästen (`get_rect`) oder nur Zeichenkästen (`get_charbox`)? Eine Seite aus `ix.26.13.pdf`, Ausgabe nur als Zahlen. Das Ergebnis bestimmt den **Weg**, nicht das Ziel | 0,5 h |
 | 2 | `layout.py`: Letterbox, Dekodierung der sechs Werte je Kasten, Rückrechnung auf Seitenanteile, Schwelle, Mindestfläche, Klassen. Tests ohne Modell mit festen Ausgaben | 3 h |
 | 3 | Loader und Pipeline: Haken je Seite, Ausschnitt, `paddleocr-vl`, `tabellen_chunks`, Seitenzuordnung, Textentfernung, Bericht | 4 h |
 | 4 | Konfiguration, Fingerabdruck, Fail-soft | 1 h |
@@ -1232,6 +1238,8 @@ kein Torch, kein `ultralytics`.
 4. **Zeit**: Dauer des Ingests vorher und nachher, je Seite und gesamt.
 5. **Fehlalarme**: Anteil der Tabellenregionen ohne Datentabelle. Bekannt ist der
    Anzeigenkasten auf S. 145.
+6. **Doppelte Tabellentexte**: Zahl der Tabellen, deren Text nicht aus dem Seitentext
+   entfernt werden konnte. Ziel: 0. Jeder Fall ist ein Mangel und wird benannt.
 
 Der Bericht steht danach in `docs/EVIDENCE-layout.md`.
 
@@ -1251,7 +1259,7 @@ Alternative, falls die Erkennung auf unseren Layouts versagt: PP-DocLayout (Apac
 Paddle-Laufzeit) oder PP-StructureV3. Beide brauchen eine Paddle-Installation; sie sind
 in dieser Stufe nicht vorgesehen.
 
-**Status:** Entwurf 2026-11-09. Wartet auf Freigabe von D42–D48 und W1–W10.
-Kein Code vor der Freigabe.
+**Status:** Entwurf 2026-11-09. D44 ist entschieden (Text entfernen). Offen sind
+D42, D43, D45–D48 und W1–W10. Kein Code vor der Freigabe.
 
 

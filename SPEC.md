@@ -1095,3 +1095,163 @@ Bescheid-Bild über `scripts/pruefe_tabellenpfad.py`: 5 Spalten, 12 Zeilen, dara
 Kopf-Chunk und 12 Zeilen-Chunks (drei breite Zeilen an Zellgrenzen geteilt), längster
 Chunk 571 Zeichen, keine Warnung.
 
+---
+
+### 11.16 Layout-Erkennung mit einem YOLO-Modell (2026-11-09, Entwurf)
+
+Auftrag: „Finde einen Artikel über ein yolo model, dass segmente in Dokumenten erkennt
+und prüfe ob wir das einsetzen können“ und „Deutsche Steuerbescheide <- löse dich davon.
+Schreibe SPEC“.
+
+Der Steuerbescheid war die Probe, nicht der Gegenstand. Diese Stufe gilt dem
+konfigurierten Korpus: fünf deutsche PDFs mit Textebene — ein 156-Seiten-Magazin, drei
+Fachartikel beziehungsweise Foliensätze und ein Trennblatt ohne Textebene. Tabellen in
+technischen Dokumenten, Anzeigenkästen und Codeblöcke sind die Fälle, die zählen.
+Steuerformulare kommen im Korpus nicht vor.
+
+#### Ausgangslage
+
+| Punkt | Stand heute |
+|---|---|
+| Tabellen mit Textebene | Der Text steht als Fließtext im Fenster-Chunk. Es gibt keine Zeilen-Chunks, weil der Tabellenpfad nur auf OCR-Seiten läuft |
+| Seiten ohne Textebene | Genau eine (Trennblatt). `Table Recognition:` über die ganze Seite lieferte dort eine Tabelle mit Kopfzeile und null Zeilen — ein Fehlalarm |
+| Tabellen im Korpus | Die Zahl ist **nicht bekannt**. Ein Zensus ist Teil der Messung |
+| Erkennung von Regionen | Es gibt keine. Der Struktur-Chunker liest Zeilen und Überschriften, keine Kästen |
+
+Probe mit dem echten Modell (CPU, nur Klassen, Kästen und Zeiten ausgegeben):
+
+| Fall | Ergebnis |
+|---|---|
+| Bescheid, 720 × 1022 | 567 ms, 15 Kästen, **eine Tabellenregion** (conf 0,55) genau auf dem Betragsblock |
+| ix.26.13, Seiten 5, 17, 40 (Textseiten) | 565–698 ms, je **0 Tabellen** |
+| ix.26.13, Seite 145 (Anzeigenkasten) | 698 ms, 1 Tabelle + 1 Table Footnote, conf 0,63 — das ist **keine** Datentabelle |
+| Ausschnitt der erkannten Tabelle → `paddleocr-vl` | 2 Spalten × 4 Zeilen, 1 Zeilen-Chunk. Das Bild hat 87 dpi; bei 300 dpi wäre der Ausschnitt rund 560 × 465 px |
+| `Table Recognition:` über die **ganze** Seite | 5 Spalten × 12 Zeilen: das Modell las die Seitenspalten als Tabelle. Der Ausschnitt ist die bessere Einheit |
+
+#### Das Modell
+
+DocLayout-YOLO (arXiv 2410.12628, Oktober 2024, opendatalab). YOLOv10-basiert. Das Paper
+nennt mAP 70,3 (D4LA), 79,7 (DocLayNet) und 78,8 (DocStructBench) bei 85,5 FPS auf GPU.
+Das Modell erkennt zehn Klassen: Title, Plain Text, Abandoned Text, Figure, Figure
+Caption, **Table**, Table Caption, Table Footnote, Isolated Formula, Formula Caption.
+
+| Artefakt | Lizenz | Verwendung |
+|---|---|---|
+| Code `opendatalab/DocLayout-YOLO` (baut auf ultralytics) | AGPL-3.0 | **nicht** übernehmen |
+| Gewichte `DocLayout-YOLO-DocStructBench`, imgsz 1024, 40,7 MB | Apache-2.0 | zulässig |
+| ONNX-Export derselben Gewichte, 75 MB | Apache-2.0 | zulässig |
+| Gewichte `imgsz1280-2501` | AGPL-3.0 | **nicht** nehmen |
+| `onnxruntime` | MIT | zulässig |
+
+Der Weg ist damit festgelegt: Apache-2.0-Gewichte als ONNX, Ausführung über
+`onnxruntime`, Vor- und Nachverarbeitung in eigenem Code. Kein AGPL-Code im Repository,
+kein Torch, kein `ultralytics`.
+
+#### Offene Entscheidungen
+
+| ID | Frage | Optionen | Empfehlung |
+|---|---|---|---|
+| D42 | Auf welchen Seiten läuft der Detektor? | (a) jede Seite (b) nur Seiten mit Textebene (c) nur Seiten ohne Textebene | **(a)** — 0,7 s je Seite; Tabellen stehen in beiden Fällen, und der Trennblatt-Fehlalarm verschwindet nur, wenn die Erkennung dort läuft |
+| D43 | Welche Klassen werden verwendet? | (a) nur `table` (b) `table` plus `table_caption` und `table_footnote` (c) alle Klassen | **(a)** — der Tabellenleser erwartet das Gitter. Beschriftung und Fußnote bleiben Fließtext |
+| D44 | Was passiert mit dem Tabellentext der Textebene? | (a) bleibt stehen, Duplikat (b) Zeilen, deren Mitte im Kasten liegt, fallen weg (c) Zeichen im Kasten fallen weg | **(b)** — Zeilenkästen sind billiger als Zeichenkästen, und Fließtext und Tabellenzeile teilen normalerweise keine Grundlinie. Rückfall (a) mit Warnung, wenn die Koordinate fehlt |
+| D45 | Welche Auflösungen? | (a) Erkennung 200 dpi, Ausschnitt 300 dpi (b) beides 300 (c) Erkennung 150, Ausschnitt 300 | **(a)** — 200 dpi reicht für Kästen und kostet 0,7 s; kleine Beträge brauchen 300 dpi im Ausschnitt |
+| D46 | Schwelle und Mindestfläche? | (a) Konfidenz 0,25, Fläche 1 % der Seite (b) 0,5 und 1 % (c) 0,25 und 0,5 % | **(a)** — konservativ bei der Fläche; die Messung entscheidet, ob 0,25 Fehlalarme kostet. Der Anzeigenkasten auf S. 145 hatte 0,63 |
+| D47 | Was, wenn Modell oder Laufzeit fehlt? | (a) Abbruch (b) Warnung, Layout aus, Ingest läuft (c) Abbruch nur bei `layout: true` | **(b)** — ein optionaler Detektor darf den Ingest nicht anhalten, wie bei der OCR (V9) |
+| D48 | Standardwert | (a) `false` bis zur Messung (b) sofort `true` (c) `true` nur in der Messkonfiguration | **(a)** — ohne Messung ist `true` eine Behauptung. Nach positiver Messung wird der Standard sichtbar geändert |
+
+#### Verhalten (Abnahmekriterien)
+
+- **W1** `erkenne(bild)` ist eine reine Funktion und liefert je Region Klasse,
+  Konfidenz und Kasten als Seitenanteile in [0, 1]. Netz nur beim Laden des Modells.
+- **W2** Verwendet wird der ONNX-Export mit Apache-2.0-Gewichten. Die Datei liegt
+  außerhalb des Repositories; der Pfad kommt aus der Konfiguration; ihr SHA-256 steht
+  im Bericht.
+- **W3** Nur die Klasse `table` zählt, und nur bei `konfidenz >= layout_schwelle` und
+  Fläche `>= layout_min_flaeche`. Alle anderen Klassen und Kästen werden ignoriert.
+- **W4** Der Ausschnitt ist der Kasten plus `layout_rand`, begrenzt auf die Seite,
+  gerendert aus derselben Seite mit `layout_dpi_ocr`.
+- **W5** Der Ausschnitt geht mit `ocr_paddle_prompt` an `paddleocr-vl`. Ist das Ergebnis
+  eine Tabelle mit mindestens zwei Spalten und mindestens einer Datenzeile, entstehen
+  Zeilen-Chunks; sonst Warnung und kein Tabellen-Chunk. Die Chunks tragen die Seite der
+  Region.
+- **W6** Der Tabellentext fällt aus dem Seitentext, damit er nicht doppelt im Index
+  steht (D44). Fehlt die Zeilenkoordinate, bleibt der Text stehen und der Bericht trägt
+  eine Warnung. Kein stiller Verlust und keine stille Dopplung.
+- **W7** Der Bericht nennt je Datei Seiten mit Tabellen, Tabellen und Zeilen-Chunks.
+  Warnungen: Modell fehlt, Erkennung fehlgeschlagen, Tabelle leer, Text nicht entfernt.
+- **W8** Auf Seiten ohne Textebene bleibt die dots-Lesung der Text. Mit Layout entfällt
+  der Prompt über die ganze Seite; gelesen werden nur erkannte Tabellen. Damit
+  verschwindet der Fehlalarm auf dem Trennblatt.
+- **W9** Mit `layout: false` ist alles wie heute (V9).
+- **W10** Unbekannte Schlüssel bleiben ein Fehler (A3). Der Fingerabdruck enthält
+  `layout`, `layout_modell`, `layout_schwelle`, `layout_min_flaeche`, `layout_dpi`,
+  `layout_dpi_ocr` und `layout_rand`. Fehlt Modell oder Laufzeit, läuft der Ingest mit
+  Warnung weiter, Layout ist aus.
+
+#### Neue Konfiguration
+
+| Schlüssel | Default | Bedeutung |
+|---|---|---|
+| `layout` | `false` | Erkennung ein/aus (D48) |
+| `layout_modell` | `""` | Pfad zur ONNX-Datei |
+| `layout_schwelle` | 0.25 | Mindestkonfidenz für eine Region |
+| `layout_min_flaeche` | 0.01 | Mindestfläche als Anteil der Seite |
+| `layout_dpi` | 200 | Auflösung für die Erkennung |
+| `layout_dpi_ocr` | 300 | Auflösung für den Tabellenausschnitt |
+| `layout_rand` | 0.01 | Rand um den Kasten als Seitenanteil |
+
+#### Setup
+
+| Punkt | Inhalt |
+|---|---|
+| Neue Abhängigkeit | `onnxruntime` (MIT, rund 27 MB). Kein Torch, kein `ultralytics` |
+| Neues Artefakt | ONNX-Datei, 75 MB, Apache-2.0; Download über `scripts/hole_layout_modell.py`, SHA-256 im Bericht, **nicht** im Repository |
+| Neue Dateien | `src/arbiter/layout.py`, `tests/test_layout.py`, `scripts/hole_layout_modell.py`, `scripts/messe_layout.py` |
+| Geändert | `loaders.py` (Zeilenkästen, Tabellentext entfernen), `pipeline.py` (Haken, Bericht, Fingerabdruck), `chunk.py` (Chunks aus Ausschnitten), `config.py` |
+| Aufwand | rund 2 Tage samt Probe, Tests und Messung |
+
+#### Arbeitspakete
+
+| Paket | Inhalt | Aufwand |
+|---|---|---|
+| 1 | Formatprüfung: liefert `pypdfium2` Zeilenkästen (`get_rect`) oder nur Zeichenkästen (`get_charbox`)? Eine Seite aus `ix.26.13.pdf`, Ausgabe nur als Zahlen | 0,5 h |
+| 2 | `layout.py`: Letterbox, Dekodierung der sechs Werte je Kasten, Rückrechnung auf Seitenanteile, Schwelle, Mindestfläche, Klassen. Tests ohne Modell mit festen Ausgaben | 3 h |
+| 3 | Loader und Pipeline: Haken je Seite, Ausschnitt, `paddleocr-vl`, `tabellen_chunks`, Seitenzuordnung, Textentfernung, Bericht | 4 h |
+| 4 | Konfiguration, Fingerabdruck, Fail-soft | 1 h |
+| 5 | Messung: Zensus, Recall vorher/nachher, Stichprobe von Hand | 2 h |
+
+#### Messung
+
+1. **Zensus**: alle Seiten des Korpus. Zahl der Seiten mit Tabellenregion, Zahl der
+   Regionen je Seite. Stichprobe von 20 Seiten (zehn mit Region, zehn ohne) von Hand:
+   Ist es eine Datentabelle, ja oder nein?
+2. **Vorher/Nachher**: `scripts/messe_chunking.py --strategien auto`. Recall@10 muss
+   mindestens 0,692 bleiben. Dazu Zahl der Tabellen-Chunks und Indexgröße.
+3. **Zeilen-Qualität**: zehn erkannte Tabellen von Hand zeilenweise vergleichen
+   (erkannte Zeilen gegen Zeilen auf der Seite).
+4. **Zeit**: Dauer des Ingests vorher und nachher, je Seite und gesamt.
+5. **Fehlalarme**: Anteil der Tabellenregionen ohne Datentabelle. Bekannt ist der
+   Anzeigenkasten auf S. 145.
+
+Der Bericht steht danach in `docs/EVIDENCE-layout.md`.
+
+#### Grenzen dieser Stufe
+
+- **Keine Lesereihenfolge aus Kästen.** Der Text kommt weiter aus der Textebene. Eine
+  Layout-basierte Reihenfolge wäre eine eigene Stufe.
+- **Keine gedrehten oder verzerrten Seiten.**
+- **Keine eigenen Einheiten für Abbildungen, Formeln und Fußnoten.**
+- **Die Erkennung ist ein Modell, keine Garantie.** Fehlalarme werden gezählt, nicht
+  weggeredet. Der Anzeigenkasten auf S. 145 ist bereits einer.
+- **Die Zeilen-Chunks erben die Grenzen von `tabellen_chunks`**: Kopfzeile, Obergrenze,
+  Seitenwechsel, eine Zeile je Chunk.
+- **Key-Value und Schema sind nicht Teil der Stufe.**
+
+Alternative, falls die Erkennung auf unseren Layouts versagt: PP-DocLayout (Apache-2.0,
+Paddle-Laufzeit) oder PP-StructureV3. Beide brauchen eine Paddle-Installation; sie sind
+in dieser Stufe nicht vorgesehen.
+
+**Status:** Entwurf 2026-11-09. Wartet auf Freigabe von D42–D48 und W1–W10.
+Kein Code vor der Freigabe.
+
+

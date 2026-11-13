@@ -61,6 +61,7 @@ Zeilen- und Zeichenkästen entfällt; die SPEC hält die Revision fest.
 | Testsuite | `uv run pytest` | 280 Tests, alle grün |
 | Lint | `uv run ruff check .` | keine Meldung |
 | Typen | `uv run mypy` | keine Meldung in 26 Dateien |
+| Abdeckung | `uv run pytest --cov=arbiter --cov-report=term-missing` | gesamt 86 %, `layout.py` 89 % (die ONNX-Sitzung deckt nur der Echtlauf), `tabellen.py` 96 %, `chunk.py` 99 % |
 | Mutation | `uv run python scripts/mutants.py` | 48/48 Mutanten getötet |
 
 Neue Mutanten: Schwelle ignoriert, Fläche ignoriert, Kasten nicht begrenzt, Bildkanal

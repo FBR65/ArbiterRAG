@@ -494,9 +494,10 @@ map, and the terminal UI runs against a stub pipeline. The integration marker is
 by default.
 
 Current state: 280 tests green, ruff and mypy without findings, 48/48 hand-written mutants
-killed, line coverage 87 % overall (`tabellen.py` 96 %, `chunk.py` 99 %). The evidence for
-the table and OCR work is in `docs/EVIDENCE-tabellen.md`, for the layout detection in
-`docs/EVIDENCE-layout.md`; the chunking stage is documented in `docs/EVIDENCE-stufe7.md`.
+killed, line coverage 86 % overall (`layout.py` 89 %, `tabellen.py` 96 %, `chunk.py`
+99 %). The evidence for the table and OCR work is in `docs/EVIDENCE-tabellen.md`, for the
+layout detection in `docs/EVIDENCE-layout.md`; the chunking stage is documented in
+`docs/EVIDENCE-stufe7.md`.
 
 The goldset used for the numbers above is not part of this repository: it consists of
 questions about private documents and therefore stays local (`goldset/downloads.yaml`,

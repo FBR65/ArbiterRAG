@@ -33,7 +33,6 @@ All models are called through one OpenAI-compatible endpoint (llama-swap on
 - [Known limitations](#known-limitations)
 - [Testing and quality gates](#testing-and-quality-gates)
 - [Repository layout](#repository-layout)
-- [Specification](#specification)
 - [License](#license)
 
 ## Status
@@ -446,8 +445,8 @@ An earlier measurement on the same corpus gave recall@10 0.71 and nDCG@10 0.65 (
 only, 600-character windows); with the full-text half included, recall dropped to 0.65.
 The strategy comparison with complete-evidence recall is in [Chunking](#chunking).
 
-An acceptance test of eight questions against a 156-page magazine passed three. The
-failures are documented in `docs/EVIDENCE-verbesserungen.md`, section J.
+An acceptance test of eight questions against a 156-page magazine passed three; the
+failures were analysed case by case.
 
 ## Known limitations
 
@@ -473,10 +472,9 @@ failures are documented in `docs/EVIDENCE-verbesserungen.md`, section J.
 - **`qes` is not maintained for tables.** The strategy does not mask table blocks and is
   not reachable through `auto`.
 - **HyDE was removed.** It was measured with and without: one answer difference on
-  bge-m3, none on nomic-embed-text. Section D of `SPEC.md` records the removal. Earlier
-  gate variants (a per-passage scoring model, one choice over all candidates, a checker of
-  the finished answer) were removed as well; all three removed correct answers and no
-  wrong ones.
+  bge-m3, none on nomic-embed-text. Earlier gate variants (a per-passage scoring model,
+  one choice over all candidates, a checker of the finished answer) were removed as well;
+  all three removed correct answers and no wrong ones.
 
 ## Testing and quality gates
 
@@ -495,9 +493,7 @@ by default.
 
 Current state: 280 tests green, ruff and mypy without findings, 48/48 hand-written mutants
 killed, line coverage 86 % overall (`layout.py` 89 %, `tabellen.py` 96 %, `chunk.py`
-99 %). The evidence for the table and OCR work is in `docs/EVIDENCE-tabellen.md`, for the
-layout detection in `docs/EVIDENCE-layout.md`; the chunking stage is documented in
-`docs/EVIDENCE-stufe7.md`.
+99 %).
 
 The goldset used for the numbers above is not part of this repository: it consists of
 questions about private documents and therefore stays local (`goldset/downloads.yaml`,
@@ -532,9 +528,7 @@ src/arbiter/
   cli.py              command line
   eval.py             goldset measurement per stage
 scripts/              measurement and diagnosis scripts
-docs/                 evidence per stage
 tests/                unit and integration tests
-SPEC.md               the contract behind the code
 ```
 
 Measurement and diagnosis scripts worth knowing:
@@ -547,13 +541,6 @@ Measurement and diagnosis scripts worth knowing:
 | `scripts/measure_chain.py` | answer quality along the full chain |
 | `scripts/pruefe_tabellenpfad.py` | OCR table path with the real models, no cell contents printed |
 | `scripts/mutants.py` | mutation run: one real bug at a time, restore from git |
-
-## Specification
-
-`SPEC.md` is the contract behind the code. Requirement numbers (A, B, C, E, F, G, H, K, L,
-M, N, O, P, R, V) are referenced in docstrings and commit messages. Decisions that were
-made and later reversed carry their measurement with them, including the ones that
-failed. The specification was approved before the code and amended visibly.
 
 ## License
 
